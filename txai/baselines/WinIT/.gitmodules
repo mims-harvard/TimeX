@@ -1,0 +1,8 @@
+[submodule "time_series_explainability"]
+	path = FIT
+	url = https://github.com/jajsmith/time_series_explainability.git 
+	update = rebase
+	branch = update-winit
+[submodule "TSR"]
+	path = TSR
+	url = https://github.com/cjrooke/TS-Interpretability-Benchmark.git
