@@ -3,3 +3,5 @@ txai.egg-info
 __pycache__
 *.pt
 *.png
+*.pkl
+.vscode
