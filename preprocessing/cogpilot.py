@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 import math
 import pickle
 from functools import partial
@@ -261,6 +262,7 @@ def preprocess(
     numsecs_overlap=5,
     data_root="datasets/downloads/cogpilot/multimodal-physiological-monitoring-during-virtual-reality-piloting-tasks-1.0.0/dataPackage",
     task_label="task-ils",
+    num_processes=10,
 ):
     directory = Path(data_root) / task_label
     subject_label_list = list(directory.iterdir())
@@ -301,7 +303,7 @@ def preprocess(
     print("No sessions: ", cnt_subjectdir)
     print("No runs: ", cnt_run)
 
-    with Pool(10) as p:
+    with Pool(num_processes) as p:
         # process data in parallel
         output = p.map(
             partial(
@@ -323,6 +325,217 @@ def preprocess(
     return data_dict
 
 
+def prepare(data_dict):
+    np.random.seed(0)
+
+    unique_subj = np.unique(data_dict["s"])
+
+    # Select difficulty levels 1, 4
+    idx = (data_dict["y"] == 1) | (data_dict["y"] == 4)
+
+    X = data_dict["X"][idx]
+    y = data_dict["y"][idx]
+    s = data_dict["s"][idx]
+
+    # split into train, val, test subsets based on subjects
+    # 70/10/20 approximate split
+    nsubj = len(unique_subj)  # 29
+    nsubj_train = 21
+    nsubj_val = 3
+    nsubj_test = nsubj - nsubj_train - nsubj_val
+
+    # randomize subjects
+    perm = np.random.permutation(nsubj)
+    unique_subj = unique_subj[perm]
+
+    subj_train = unique_subj[:nsubj_train]
+    subj_val = unique_subj[nsubj_train : nsubj_train + nsubj_val]
+    subj_test = unique_subj[nsubj_train + nsubj_val :]
+
+    def get_idx(subj, s):
+        list_arr = [(s == r) * 1.0 for r in subj]
+        for i in range(len(subj)):
+            if i == 0:
+                v = list_arr[i]
+            else:
+                v += list_arr[i]
+        idx = v > 0.5
+        return idx
+
+    idx_train = get_idx(subj_train, s)
+    idx_val = get_idx(subj_val, s)
+    idx_test = get_idx(subj_test, s)
+
+    # Obtain splits and store into Data_dict_1_4.pkl
+    X_train, y_train, s_train = X[idx_train], y[idx_train], s[idx_train]
+    X_val, y_val, s_val = X[idx_val], y[idx_val], s[idx_val]
+    X_test, y_test, s_test = X[idx_test], y[idx_test], s[idx_test]
+
+    data_dict_1_4 = {
+        "X_train": X_train,
+        "y_train": y_train,
+        "s_train": s_train,
+        "X_val": X_val,
+        "y_val": y_val,
+        "s_val": s_val,
+        "X_test": X_test,
+        "y_test": y_test,
+        "s_test": s_test,
+        "Xvars": data_dict["Xvars"],
+    }
+    return data_dict_1_4
+
+
+def normalize(data_dict):
+    Ptrain, y_train, s_train = (
+        data_dict["X_train"],
+        data_dict["y_train"],
+        data_dict["s_train"],
+    )
+    Pval, y_val, s_val = data_dict["X_val"], data_dict["y_val"], data_dict["s_val"]
+    Ptest, y_test, s_test = (
+        data_dict["X_test"],
+        data_dict["y_test"],
+        data_dict["s_test"],
+    )
+    Xvars = data_dict["Xvars"]
+
+    # map labels {1,4} to {0,1}
+    y_train[y_train == 1], y_train[y_train == 4] = 0, 1
+    y_val[y_val == 1], y_val[y_val == 4] = 0, 1
+    y_test[y_test == 1], y_test[y_test == 4] = 0, 1
+
+    # re-permute last two indices
+    Ptrain = Ptrain.transpose((0, 2, 1))
+    Pval = Pval.transpose((0, 2, 1))
+    Ptest = Ptest.transpose((0, 2, 1))
+    T, F = Ptrain[0].shape
+
+    # obtain mean, std statistics on train-set
+    def get_stats(P_tensor):
+        N, T, F = P_tensor.shape
+        Pf = P_tensor.transpose((2, 0, 1)).reshape(F, -1)
+        # find mean for each variable
+        mf = np.zeros((F, 1))
+        stdf = np.ones((F, 1))
+        eps = 1e-7
+        for f in range(F):
+            vals_f = Pf[f, :]
+            #         # extract values on non-missing data
+            #         vals_f = vals_f[vals_f>0]
+            # compute mean, std
+            mf[f] = np.mean(vals_f)
+            stdf[f] = np.std(vals_f)
+            stdf[f] = np.max([stdf[f], eps])
+        return mf, stdf
+
+    # get mean, std stats from train set
+    mf, stdf = get_stats(Ptrain)
+
+    def normalizeT(P_tensor, mf, stdf):
+        """Normalize time series variables."""
+        N, T, F = P_tensor.shape
+        Pf = P_tensor.transpose((2, 0, 1)).reshape(F, -1)
+
+        # input normalization
+        # normalize by channel
+        for f in range(F):
+            Pf[f] = (Pf[f] - mf[f]) / (stdf[f] + 1e-18)
+
+        Pnorm_tensor = Pf.reshape((F, N, T)).transpose((1, 2, 0))
+        return Pnorm_tensor
+
+    def tensorize_normalize(P, y, mf, stdf):
+        T, F = P[0].shape
+        P_tensor = normalizeT(P, mf, stdf)
+        y_tensor = y.reshape(-1, 1)
+        y_tensor = y_tensor[:, 0]
+        return P_tensor, y_tensor
+
+    Ptrain_tensor, ytrain_tensor = tensorize_normalize(Ptrain, y_train, mf, stdf)
+    Pval_tensor, yval_tensor = tensorize_normalize(Pval, y_val, mf, stdf)
+    Ptest_tensor, ytest_tensor = tensorize_normalize(Ptest, y_test, mf, stdf)
+
+    # convert observations to (seq_len, batch, feats)
+    Ptrain_tensor = Ptrain_tensor.transpose((1, 0, 2))
+    Pval_tensor = Pval_tensor.transpose((1, 0, 2))
+    Ptest_tensor = Ptest_tensor.transpose((1, 0, 2))
+
+    # put normalized data into dictionary
+    data_dict = {
+        "Ptrain": Ptrain_tensor,
+        "Pval": Pval_tensor,
+        "Ptest": Ptest_tensor,
+        "ytrain": ytrain_tensor,
+        "yval": yval_tensor,
+        "ytest": ytest_tensor,
+        "strain": s_train,
+        "sval": s_val,
+        "stest": s_test,
+        "Vars": Xvars,
+    }
+    return data_dict
+
+
 if __name__ == "__main__":
-    data_dict = preprocess()
-    pickle.dump(data_dict, open("CogPilot_MTS_20_5.pkl", "wb"), protocol=4)
+    parser = ArgumentParser()
+    parser.add_argument("--numsecs", default=20)
+    parser.add_argument("--numsecs_overlap", default=5)
+    parser.add_argument("--num_processes", default=10)
+    parser.add_argument("--overwrite", default=False, action="store_true")
+    args = parser.parse_args()
+
+    out_dir = Path("datasets/cogpilot")
+    out_dir.mkdir(exist_ok=True)
+
+    # 1. preprocess timeseries
+    preprocess_path = (
+        out_dir / f"CogPilot_MTS_{args.numsecs}_{args.numsecs_overlap}.pkl"
+    )
+    if not args.overwrite and preprocess_path.exists():
+        print(
+            f"Found preprocessed data with numsecs={args.numsecs}, numsecs_overlap={args.numsecs_overlap} at {preprocess_path}. To redo, use --overwrite"
+        )
+        with open(preprocess_path, "rb") as f:
+            data_dict = pickle.load(f)
+    else:
+        print(
+            f"Preprocessing data with numsecs={args.numsecs}, numsecs_overlap={args.numsecs_overlap} to {preprocess_path}"
+        )
+        data_dict = preprocess(numsecs=20, numsecs_overlap=5, num_processes=10)
+        with open(preprocess_path, "wb") as f:
+            pickle.dump(data_dict, f, protocol=4)
+
+    # 2. split into train/test/val, stratified by participant, using labels 1 and 4 only
+    prepare_path = (
+        out_dir / f"CogPilot_MTS_1_4_{args.numsecs}_{args.numsecs_overlap}.pkl"
+    )
+    if not args.overwrite and prepare_path.exists():
+        print(
+            f"Found train/val/test data (1/4 difficulty) with numsecs={args.numsecs}, numsecs_overlap={args.numsecs_overlap} at {prepare_path}. To redo, use --overwrite"
+        )
+        with open(prepare_path, "rb") as f:
+            data_dict = pickle.load(f)
+    else:
+        print(
+            f"Preparing train/val/test data (1/4 difficulty) with numsecs={args.numsecs}, numsecs_overlap={args.numsecs_overlap} to {prepare_path}"
+        )
+        data_dict = prepare(data_dict)
+        with open(prepare_path, "wb") as f:
+            pickle.dump(data_dict, f, protocol=4)
+
+    # 2. normalize data, convert labels to 0/1
+    norm_path = (
+        out_dir / f"CogPilot_MTS_1_4_{args.numsecs}_{args.numsecs_overlap}_norm.pkl"
+    )
+    if not args.overwrite and norm_path.exists():
+        print(
+            f"Found normalized train/val/test data (1/4 difficulty) with numsecs={args.numsecs}, numsecs_overlap={args.numsecs_overlap} at {norm_path}. To redo, use --overwrite"
+        )
+    else:
+        print(
+            f"Preparing normalized train/val/test data (1/4 difficulty) with numsecs={args.numsecs}, numsecs_overlap={args.numsecs_overlap} to {norm_path}"
+        )
+        data_dict = normalize(data_dict)
+        with open(norm_path, "wb") as f:
+            pickle.dump(data_dict, f, protocol=4)
