@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
-from txai.models.positional_enc import PositionalEncodingTF
+from txai.models.encoders.positional_enc import PositionalEncodingTF
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

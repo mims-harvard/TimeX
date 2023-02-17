@@ -1,1 +1,5 @@
 datasets/*
+txai.egg-info
+__pycache__
+*.pt
+*.png

@@ -3,6 +3,26 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
+def exp_criterion_evaluation(mask: torch.Tensor, beta: float, exp_criterion: torch.nn.Module):
+
+    if not (isinstance(beta, torch.Tensor) and (isinstance(exp_criterion, list))):
+        l = exp_criterion(mask)
+        return beta * l, [l.item()]
+
+    # Else, need list-based evaluation
+    llist = []
+    for i in range(len(beta)):
+        
+        l = exp_criterion[i](mask)
+        llist.append(l.item())
+
+        if i == 0:
+            lsum = beta[i] * l
+        else:
+            lsum += beta[i] * l
+
+    return lsum, llist
+
 def gini_loss(x):
     '''
     Assumes input is of size (N,), i.e. one-dimensional

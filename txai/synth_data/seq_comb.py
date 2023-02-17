@@ -37,7 +37,10 @@ def generate_seq(T = 500, D = 15, class_num = 0):
     # Make combinations:
 
     # Sample sequence length through random uniform
-    imp_sensors = np.random.choice(np.arange(D), size = (2,), replace = False)
+    if D > 1:
+        imp_sensors = np.random.choice(np.arange(D), size = (2,), replace = False)
+    else:
+        imp_sensors = [0, 0]
 
     min_x, max_x = np.min(samp), np.max(samp)
 
@@ -198,15 +201,10 @@ def print_tuple(t):
     print('y', t[2].shape)
 
 if __name__ == '__main__':
-    # X, _ = generate_spikes(50, 5, 1)
-
-    # print('X', X)
-    # plt.imshow(X)
-    # plt.savefig('test.png')
 
     for i in range(5):
         print(f'Split {i + 1} ' + '-' * 20)
-        train_dataset, val, test, gt_exps = get_all_spike_loaders(Ntrain=5000, Nval=100, Ntest=1000, T = 50, D = 4)
+        train_dataset, val, test, gt_exps = get_all_spike_loaders(Ntrain=5000, Nval=100, Ntest=1000, T = 50, D = 1)
 
         dataset = {
             'train_loader': train_dataset,
@@ -215,7 +213,8 @@ if __name__ == '__main__':
             'gt_exps': gt_exps
         }
 
-        torch.save(dataset, '/home/owq978/TimeSeriesXAI/datasets/SeqComb/scomb_split={}.pt'.format(i + 1))
+        base = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets'
+        torch.save(dataset, base + '/SeqCombSingle/split={}.pt'.format(i + 1))
         
         print('Val ' + '-'*20)
         print_tuple(val)

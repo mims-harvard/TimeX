@@ -1,6 +1,5 @@
 import torch
 from sklearn.metrics import f1_score
-from txai.models.base_adv_model import compose_adv_model
 
 @torch.no_grad()
 def eval_on_tuple(test_tuple, model, n_classes, mask = None):
@@ -20,19 +19,15 @@ def eval_on_tuple(test_tuple, model, n_classes, mask = None):
     return f1, mask
 
 @torch.no_grad()
-def eval_adv_on_tuple(test_tuple, model, n_classes, mask = None):
-
-    extractor, predictor, _ = model
-    # extractor.eval()
-    # predictor.eval()
-
+def eval_cbmv1(test_tuple, model):
+    model.eval()
     X, times, y = test_tuple
+    pred, concept_scores, masks, logits = model(X, times, captum_input = False)
 
-    pred, mask = compose_adv_model(extractor, predictor)(X, times)
-    f1 = f1_score(y.cpu().numpy(), pred.argmax(dim=1).detach().cpu().numpy(), average='macro')
-
-    return f1, mask
-
+    ynp = y.cpu().numpy()
+    prednp = pred.argmax(dim=1).detach().cpu().numpy()
+    f1 = f1_score(ynp, prednp, average='macro')
+    return f1, (pred, concept_scores, masks, logits)
 
 
 @torch.no_grad()
