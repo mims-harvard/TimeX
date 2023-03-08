@@ -29,6 +29,30 @@ def eval_cbmv1(test_tuple, model):
     f1 = f1_score(ynp, prednp, average='macro')
     return f1, (pred, concept_scores, masks, logits)
 
+@torch.no_grad()
+def eval_filter(test_tuple, model):
+    model.eval()
+    X, times, y = test_tuple
+    pred, _, masks, logits = model(X, times, captum_input = False)
+    # print('masks', masks.shape)
+    # print('mask', masks)
+
+    ynp = y.cpu().numpy()
+    prednp = pred.argmax(dim=1).detach().cpu().numpy()
+    f1 = f1_score(ynp, prednp, average='macro')
+    return f1, (pred, masks, logits)
+
+@torch.no_grad()
+def eval_mv2(test_tuple, model):
+    model.eval()
+    X, times, y = test_tuple
+    pred, mask_in, smoother_stats, smooth_src = model(X, times, captum_input = False)
+
+    ynp = y.cpu().numpy()
+    prednp = pred.argmax(dim=1).detach().cpu().numpy()
+    f1 = f1_score(ynp, prednp, average='macro')
+    return f1, (pred, mask_in, smoother_stats, smooth_src)
+
 
 @torch.no_grad()
 def eval_mvts_transformer(test_tuple, model):

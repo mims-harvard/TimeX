@@ -43,7 +43,7 @@ def gen_dataset(template, samps = 1000, device = None):
     dec = torch.cat([gen_sample(template, increase = False) for _ in range(samps)], dim = 1).to(device)
     
     times = torch.arange(inc.shape[0]).unsqueeze(-1).repeat(1, samps * 2).to(device)
-    whole = torch.cat([inc, dec], dim=1)
+    whole = torch.cat([inc, dec], dim=1).to(device)
     batch_id = torch.cat([torch.zeros(inc.shape[1]), torch.ones(dec.shape[1])]).to(device).long()
     return whole, times, batch_id
 

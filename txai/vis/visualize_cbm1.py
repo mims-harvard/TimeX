@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 def get_x_mask_borders(mask):
     nz = mask.nonzero(as_tuple=True)[0].tolist()
     # Get contiguous:
-    nz_inds = [(nz[i], nz[i+1]) for i in range(len(nz) - 1)]
+    nz_inds = [(nz[i], nz[i+1]) for i in range(len(nz) - 1) if (nz[i] == (nz[i+1] - 1))]
     return nz_inds
 
 def visualize(model, test_tup, n = 3, per_class = False, class_num = None, show = True):

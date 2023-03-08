@@ -23,6 +23,26 @@ def exp_criterion_evaluation(mask: torch.Tensor, beta: float, exp_criterion: tor
 
     return lsum, llist
 
+# def exp_criterion_evaluation_permask(mask_list, beta, exp_criterion):
+
+#     if not (isinstance(beta, torch.Tensor) and (isinstance(exp_criterion, list))):
+#         l = exp_criterion(mask)
+#         return beta * l, [l.item()]
+    
+#     # Else, need list-based evaluation
+#     llist = []
+#     for i in range(len(beta)):
+        
+#         l = exp_criterion[i](mask)
+#         llist.append(l.item())
+
+#         if i == 0:
+#             lsum = beta[i] * l
+#         else:
+#             lsum += beta[i] * l
+
+#     return lsum, llist
+
 def gini_loss(x):
     '''
     Assumes input is of size (N,), i.e. one-dimensional
@@ -180,6 +200,20 @@ class L1Loss(nn.Module):
 
         return logits.sum() * (1 / logits.shape[0]) 
 
+class L1Loss_permask(nn.Module):
+    def __init__(self, norm = False):
+        super(L1Loss_permask, self).__init__()
+        self.norm = norm
+
+    def forward(self, logits):
+        for i in range(len(logits)):
+            if self.norm:
+                if i == 0:
+                    l = logits[i].sum() / (logits[i].flatten().shape[0])
+                else:
+                    l += logits[i].sum() / (logits[i].flatten().shape[0])
+        return l
+
 class L2Loss(nn.Module):
     def __init__(self):
         super(L2Loss, self).__init__()
@@ -247,3 +281,10 @@ class DimEntropy(nn.Module):
         dist /= dist.sum(1).unsqueeze(-1).repeat(1,mask.shape[self.dim])
         ent = -1.0 * (dist.log() * dist).sum(dim=1).mean() # Take mean across batches
         return ent
+
+class PairwiseDecorrelation(nn.Module):
+    def __init__(self):
+        super(PairwiseDecorrelation, self).__init__()
+
+    def forward(self, mask_list):
+        return (mask_list[0] * mask_list[1]).mean() 

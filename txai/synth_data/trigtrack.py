@@ -24,7 +24,7 @@ class TrigTrack(GenerateSynth):
         3: 2.0
     }
 
-    def __init__(self, T, D):
+    def __init__(self, T, D, noise = None):
         '''
         D: dimension of samples (# sensors)
         T: length of time for each sample
@@ -32,6 +32,7 @@ class TrigTrack(GenerateSynth):
         super(TrigTrack, self).__init__(T, D, 4)
 
         self.important_sensor = np.random.choice([0, 1, 2, 3])
+        self.noise = noise
 
 
     def generate_seq(self, class_num = 0):
@@ -57,6 +58,10 @@ class TrigTrack(GenerateSynth):
 
             signal = amp * np.sin(wave_len * np.arange(self.T * 2))
 
+            # Multiply by noise:
+            if self.noise is not None:
+                signal = signal + np.random.normal(loc=0.0, scale = self.noise, size = signal.shape)
+
             # Choose random starting/ending point for signal:
             start = np.random.choice(np.arange(self.T - 2))
             end = start + self.T
@@ -67,7 +72,8 @@ class TrigTrack(GenerateSynth):
 
 if __name__ == '__main__':
 
-    gen = TrigTrack(T = 50, D = 4)
+    gen = TrigTrack(T = 50, D = 4, noise = 0.25)
+    print('noise', gen.noise)
 
     for i in range(5):
         train, val, test, gt_exps = gen.get_all_loaders(Ntrain=5000, Nval=100, Ntest=1000)
@@ -79,7 +85,7 @@ if __name__ == '__main__':
             'gt_exps': gt_exps
         }
 
-        torch.save(dataset, '/home/owq978/TimeSeriesXAI/datasets/TrigTrack/split={}.pt'.format(i + 1))
+        torch.save(dataset, '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/TrigTrackNoise/split={}.pt'.format(i + 1))
         
         print('Split {} -------------------------------'.format(i+1))
         print('Val ' + '-'*20)
@@ -91,4 +97,4 @@ if __name__ == '__main__':
         print(gt_exps.shape)
 
         print('Visualizing')
-        visualize_some(dataset, save_prefix = 'trig') 
+        visualize_some(dataset, save_prefix = 'trig_fold{}'.format(i)) 

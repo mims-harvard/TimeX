@@ -17,7 +17,8 @@ class GumbelMask(nn.Module):
             type_masktoken = 'dyna_norm_datawide',
             type_archmask = None,
             masktoken_kwargs = {},
-            seed = None
+            seed = None,
+            smooth_concepts = False,
         ):
 
         super(GumbelMask, self).__init__()
@@ -71,6 +72,15 @@ class GumbelMask(nn.Module):
                 return trend_comp, seasonal_comp
             self.mask_token = r
 
+        self.smooth_concepts = smooth_concepts
+        if self.smooth_concepts:
+            self.moving_avg_layer = torch.nn.AvgPool1d( # Don't include parameter if we're not smoothing concepts
+                kernel_size = 5,
+                padding = 5 // 2,
+                stride = 1,
+                count_include_pad = False,
+                )
+
     
     def generate_mask(self, z, src = None):
         '''
@@ -85,8 +95,9 @@ class GumbelMask(nn.Module):
 
         # Generate mask based on attention:
         if self.type_archmask == 'attention' or self.type_archmask == 'attn':
-            attn_mask = STENegInf.apply(logits.squeeze(-1)) # All are negative inf coming out of here
+            attn_mask = STENegInf.apply(logits).transpose(0,1) # All are negative inf coming out of here
             # Expand to SxS size:
+            #print('attn_mask', attn_mask.shape)
             attn_mask = attn_mask.unsqueeze(-1).expand(-1, -1, attn_mask.shape[1])
             attn_mask = torch.add(attn_mask, attn_mask.transpose(1, 2)) # Masked-out parts should stretch across matrix by rows and columns
             return mask, logits, attn_mask
@@ -109,6 +120,9 @@ class GumbelMask(nn.Module):
         # print('Src', src.shape)
         # print('M', M.shape)
         # print('to_replace', to_replace.shape)
+
+        if self.smooth_concepts:
+            src = self.moving_avg_layer(src) # Smooth before replacement
         
         src = src * M + to_replace * (1 - M)
 
@@ -169,4 +183,4 @@ class GumbelMask(nn.Module):
         # Actually multiplies the mask out with the baseline
         masked_src, masked_times = self.apply_mask(src, times, mask = mask, captum_input = captum_input)
 
-        return masked_src, masked_times, mask, logits
+        return masked_src, masked_times, mask, logits, attn_mask

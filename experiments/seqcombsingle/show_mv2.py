@@ -1,9 +1,9 @@
 import torch
 
-from txai.vis.visualize_cbm1 import visualize
-from txai.models.cbmv1 import CBMv1
+from txai.vis.visualize_mv2 import visualize
+from txai.models.modelv2 import Modelv2
 from txai.utils.data import process_Synth
-from txai.utils.predictors.eval import eval_cbmv1
+from txai.utils.predictors.eval import eval_mv2
 from txai.synth_data.simple_spike import SpikeTrainDataset
 
 import matplotlib.pyplot as plt
@@ -17,26 +17,18 @@ def main():
 
     val, test = D['val'], D['test']
 
-    # Calc statistics for baseline:
-    mu = D['train_loader'].X.mean(dim=1)
-    std = D['train_loader'].X.std(unbiased = True, dim = 1)
-
-    spath = 'models/Scomb_cbm_mah_split=1.pt'
+    spath = 'models/Scomb_v2_split=1.pt'
     print('Loading model at {}'.format(spath))
 
     sdict, config = torch.load(spath)
     print('Config:\n', config)
 
-    model = CBMv1(masktoken_kwargs = {'mu': mu, 'std': std}, **config)
+    model = Modelv2(**config)
     model.to(device)
 
     model.load_state_dict(sdict)
-    if model.distance_method == 'mahalanobis':
-        model.load_concept_bank('concept_bank.pt')
-    elif model.distance_method == 'centroid':
-        model.mu = torch.load('concept_bank_centroid.pt')['mu']
 
-    f1, _ = eval_cbmv1(test, model)
+    f1, _ = eval_mv2(test, model)
     print('Test F1: {:.4f}'.format(f1))
 
     visualize(model, test, show = False, class_num = 3)

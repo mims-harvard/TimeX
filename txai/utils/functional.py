@@ -14,3 +14,8 @@ def mahalanobis_dist(z, mu, sigma_inv):
     # print('bmm size', torch.bmm(sigma_inv_rep, delta).shape)
     m = torch.bmm(delta.transpose(1, 2), torch.bmm(sigma_inv_rep, delta))
     return m.sqrt()
+
+def transform_to_attn_mask(linear_mask):
+    attn_mask = linear_mask.unsqueeze(-1).repeat(1, 1, linear_mask.shape[1])
+    attn_mask = attn_mask * attn_mask.transpose(1, 2) # Flip and multiply
+    return attn_mask

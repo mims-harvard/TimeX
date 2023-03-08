@@ -2,10 +2,20 @@ import torch
 import numpy as np
 import ipdb
 
-from txai.utils.predictors.loss import exp_criterion_evaluation
-from txai.utils.predictors.eval import eval_cbmv1
+from txai.utils.predictors.loss_smoother_stats import exp_criterion_eval_smoothers
+from txai.utils.predictors.eval import eval_mv2
 
-def train_cbmv1(
+def stat_string(smoother_stats):
+
+    alpha, beta, thresh, p = smoother_stats
+    
+    alphamean, betamean = alpha.detach().cpu().mean(dim=0), beta.detach().cpu().mean(dim=0)
+    threshmean, pmean = thresh.detach().cpu().mean(dim=0), p.detach().cpu().mean(dim=0)
+    s = 'a = {:.4f}, b = {:.4f}, thr = {:.4f}, p = {:.4f}'.format(alphamean.item(), betamean.item(), threshmean.item(), pmean.item())
+    return s
+
+
+def train_mv2(
         model,
         optimizer,
         train_loader,
@@ -17,16 +27,8 @@ def train_cbmv1(
         clip_norm = True,
         selection_criterion = None,
         save_path = None,
-        recompute_cbank_steps = None,
-        concept_bank = None,
     ):
     # TODO: Add weights and biases logging
-
-    if model.distance_method == 'mahalanobis':
-        try:
-            model.mu, model.sigma_inv
-        except:
-            raise ValueError('Must store concept bank before running the trainer')
 
     best_epoch = 0
     best_val_metric = -1e9
@@ -41,7 +43,7 @@ def train_cbmv1(
 
             #ipdb.set_trace()
 
-            out, concept_scores, masks, logits = model(X, times, captum_input = True)
+            out, masks, smoother_stats, smooth_src = model(X, times, captum_input = True)
 
             if out.isnan().sum() > 0:
                 print('out', out.isnan().sum())
@@ -50,9 +52,10 @@ def train_cbmv1(
             clf_loss = clf_criterion(out, y)
 
             total_eloss_list = []
-            exp_loss, eloss_list = exp_criterion_evaluation(logits, beta, exp_criterion)
+            # All explanation criterion operate directly on the smoother statistics
+            exp_loss, eloss_list = exp_criterion_eval_smoothers(X, times, smoother_stats, beta, exp_criterion)
 
-            exp_loss /= len(logits) # Normalize out with respect to number of masks in model
+            #exp_loss /= len(logits) # Normalize out with respect to number of masks in model
 
             loss = clf_loss + exp_loss
 
@@ -62,14 +65,14 @@ def train_cbmv1(
             loss.backward()
             optimizer.step()
 
-            cum_sparse.append([(mask.sum() / mask.flatten().shape[0]).item() for mask in masks])
+            cum_sparse.append(((masks > 0).sum() / masks.flatten().shape[0]).item())
             cum_clf_loss.append(clf_loss.detach().item())
             cum_exp_loss.append([eloss_list])
 
         # Print all stats:
         # Convert to np:
         sparse = np.array(cum_sparse) # Should be size (B, M)
-        sparse = sparse.mean(axis=0)
+        sparse = sparse.mean()
         clf = sum(cum_clf_loss) / len(cum_clf_loss)
         exp = np.array(cum_exp_loss) # Size (B, M, L)
         exp = exp.mean(axis=0).flatten()
@@ -79,30 +82,18 @@ def train_cbmv1(
 
         # Eval after every epoch
         # Call evaluation function:
-        f1, (_, concept_scores, masks, logits) = eval_cbmv1(val_tuple, model)
+        f1, (pred, masks, smoother_stats, smooth_src) = eval_mv2(val_tuple, model)
 
         # Early stopping procedure:
         if f1 > best_val_metric:
             best_val_metric = f1
-            #torch.save(model.state_dict(), save_path)
             model.save_state(save_path)
-            if model.distance_method == 'mahalanobis':
-                torch.save({'mu': model.mu, 'sigma_inv': model.sigma_inv}, 'concept_bank.pt')
-            if model.distance_method == 'centroid':
-                torch.save({'mu': model.mu}, 'concept_bank_centroid.pt')
             best_epoch = epoch
 
 
         if (epoch + 1) % 10 == 0:
-            valsparse = ['{:.4f}'.format(masks[i].mean().item()) for i in range(len(masks))]
-            concept_avg = concept_scores.mean(dim=0)
-            print(f'Epoch {epoch + 1}, Val F1 = {f1:.4f}, Val Sparsity = {valsparse}, Concept Avg = {concept_avg.detach().cpu().numpy()}')
-
-        # Recompute concept bank if needed:
-        if recompute_cbank_steps is not None:
-            if (epoch + 1) % recompute_cbank_steps == 0:
-                # Recompute:
-                model.store_concept_bank(*concept_bank)
-
+            valsparse = '{:.4f}'.format(masks.mean().item())
+            sstring = stat_string(smoother_stats)
+            print(f'Epoch {epoch + 1}, Val F1 = {f1:.4f}, Val Sparsity = {valsparse}, Stats: {sstring}')
 
     print(f'Best Epoch: {best_epoch + 1} \t Val F1 = {best_val_metric:.4f}')
