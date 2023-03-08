@@ -1,4 +1,4 @@
-import timesynth as ts
+#import timesynth as ts
 import numpy as np
 from scipy.special import expit
 from scipy.signal import butter, lfilter, freqz
@@ -49,6 +49,25 @@ def visualize_some(dataset, save_prefix = ''):
         ax2.imshow(gtc)
         fig.suptitle('Label = {}'.format(i))
         plt.savefig(save_prefix + 'example_{}.png'.format(i))
+
+def plot_visualize_some(dataset):
+    X, times, y = dataset['test']
+    gt_exps = dataset['gt_exps']
+
+    # Pick out with each label:
+    uni = torch.unique(y).numpy()
+
+    for i in uni:
+
+        choice = np.random.choice((y == i).nonzero(as_tuple=True)[0].numpy())
+
+        Xc, gtc = X[:,choice,:].numpy(), gt_exps[:,choice,:].numpy()
+
+        plt.plot(times[:,choice], Xc[:,0])
+        plt.plot(times[:,choice], gtc)
+        plt.title('Label = {}'.format(i))
+        #plt.savefig(save_prefix + 'example_{}.png'.format(i))
+        plt.show()
 
 class GenerateSynth:
 
