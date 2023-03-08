@@ -1,4 +1,4 @@
-import timesynth as ts
+#import timesynth as ts
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.special import expit
