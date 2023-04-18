@@ -46,13 +46,51 @@ def eval_filter(test_tuple, model):
 def eval_mv2(test_tuple, model):
     model.eval()
     X, times, y = test_tuple
-    pred, mask_in, smoother_stats, smooth_src = model(X, times, captum_input = False)
+    pred, mask_in, ste_mask, smoother_stats, smooth_src = model(X, times, captum_input = False)
 
     ynp = y.cpu().numpy()
     prednp = pred.argmax(dim=1).detach().cpu().numpy()
     f1 = f1_score(ynp, prednp, average='macro')
-    return f1, (pred, mask_in, smoother_stats, smooth_src)
+    return f1, (pred, mask_in, ste_mask, smoother_stats, smooth_src)
 
+@torch.no_grad()
+def eval_mv3(test_tuple, model):
+    model.eval()
+    X, times, y = test_tuple
+    pred, pred_tilde, mask_in, ste_mask, smoother_stats, smooth_src = model(X, times, captum_input = False)
+
+    ynp = y.cpu().numpy()
+    prednp = pred.argmax(dim=1).detach().cpu().numpy()
+    f1 = f1_score(ynp, prednp, average='macro')
+    return f1, (pred, pred_tilde, mask_in, ste_mask, smoother_stats, smooth_src)
+
+@torch.no_grad()
+def eval_mv3_sim(test_tuple, model):
+    model.eval()
+    X, times, y = test_tuple
+    pred, pred_tilde, mask_in, ste_mask, smoother_stats, smooth_src, zs = model(X, times, captum_input = False)
+
+    ynp = y.cpu().numpy()
+    prednp = pred.argmax(dim=1).detach().cpu().numpy()
+    f1 = f1_score(ynp, prednp, average='macro')
+    return f1, (pred, pred_tilde, mask_in, ste_mask, smoother_stats, smooth_src, zs)
+
+@torch.no_grad()
+def eval_mv4(test_tuple, model, masked = False):
+    # Also evaluates models above v4
+    model.eval()
+    X, times, y = test_tuple
+    out = model(X, times, captum_input = False)
+
+    if masked:
+        pred = out['pred_mask']
+    else:
+        pred = out['pred']
+
+    ynp = y.cpu().numpy()
+    prednp = pred.argmax(dim=1).detach().cpu().numpy()
+    f1 = f1_score(ynp, prednp, average='macro')
+    return f1, out
 
 @torch.no_grad()
 def eval_mvts_transformer(test_tuple, model):

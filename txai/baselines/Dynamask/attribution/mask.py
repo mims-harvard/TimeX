@@ -120,6 +120,7 @@ class Mask:
         optimizer = optim.SGD([mask_tensor_new], lr=learning_rate, momentum=momentum)
         hist = torch.zeros(3, 0)
         # Initializing the reference vector used in the size regulator (called r_a in the paper)
+        print('keep_rat', keep_ratio)
         reg_ref = torch.zeros(int((1 - keep_ratio) * self.T * self.N_features))
         reg_ref = torch.cat((reg_ref, torch.ones(self.T * self.N_features - reg_ref.shape[0]))).to(self.device)
 

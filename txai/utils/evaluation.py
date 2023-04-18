@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
 
-from sklearn.metrics import explained_variance_score, roc_auc_score, average_precision_score
+from sklearn.metrics import explained_variance_score, roc_auc_score, average_precision_score, precision_recall_curve, auc
 from sklearn.metrics import precision_score, recall_score
 from scipy.stats import spearmanr
 from tslearn.metrics import dtw_path
@@ -110,14 +110,14 @@ def faithfulness_violation(model, X, times, mask_X, mask_times, y):
 
 def normalize_exp(exps):
     norm_exps = torch.empty_like(exps)
-    for i in range(exps.shape[0]):
-        norm_exps[i] = (exps[i] - exps[i].min()) / (exps[i].max() - exps[i].min() + 1e-9)
+    for i in range(exps.shape[1]):
+        norm_exps[:,i,:] = (exps[:,i,:] - exps[:,i,:].min()) / (exps[:,i,:].max() - exps[:,i,:].min() + 1e-9)
     return norm_exps
 
-def ground_truth_auroc(generated_exps, gt_exps, penalize_negatives = True):
+def ground_truth_xai_eval(generated_exps, gt_exps, penalize_negatives = True):
     '''
-    Compute AUROC of generated explanation against ground-truth explanation
-        - AUROC is computed across one sample, averaged across all samples
+    Compute auprc of generated explanation against ground-truth explanation
+        - auprc is computed across one sample, averaged across all samples
 
     NOTE: Assumes all explanations have batch-first style, i.e. (B,T,d) - captum input/output
 
@@ -129,14 +129,28 @@ def ground_truth_auroc(generated_exps, gt_exps, penalize_negatives = True):
     # Normalize generated explanation:
     generated_exps = normalize_exp(generated_exps).detach().clone().cpu().numpy()
     gt_exps = gt_exps.detach().clone().cpu().numpy()
+    gt_exps = gt_exps.astype(int)
 
-    total_auroc = 0
-    for i in range(generated_exps.shape[0]):
-        #auroc = roc_auc_score(gt_exps[i].flatten(), generated_exps[i].flatten())
-        auroc = average_precision_score(gt_exps[i].flatten(), generated_exps[i].flatten())
-        total_auroc += auroc
+    all_auprc, all_aup, all_aur = [], [], []
+    for i in range(generated_exps.shape[1]):
+        #auprc = roc_auc_score(gt_exps[i].flatten(), generated_exps[i].flatten())
+        # print('gt exps', gt_exps[:,i,:].flatten().shape)
+        # print('gen', generated_exps[:,i,:].flatten())
+        auprc = average_precision_score(gt_exps[:,i,:].flatten(), generated_exps[:,i,:].flatten())
+        prec, rec, thres = precision_recall_curve(gt_exps[:,i,:].flatten(), generated_exps[:,i,:].flatten())
+        aur = auc(thres, rec[:-1]) # Last value in recall curve is always 0 (see sklearn documentation)
+        aup = auc(thres, prec[:-1]) # Last value in precision curve is always 1 (see sklearn documentation)
+        all_auprc.append(auprc)
+        all_aup.append(aup)
+        all_aur.append(aur)
 
-    return total_auroc / generated_exps.shape[0]
+    output_dict = {
+        'auprc': all_auprc,
+        'aup': all_aup,
+        'aur': all_aur
+    }
+
+    return output_dict
 
 def ground_truth_precision_recall(generated_exps, gt_exps, num_points = 50):
     '''

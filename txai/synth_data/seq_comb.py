@@ -58,6 +58,8 @@ def generate_seq(T = 500, D = 15, class_num = 0):
 
     coords = []
 
+    times_chosen = []
+
     j = 0
     for i in imp_sensors:
         b = B[j]

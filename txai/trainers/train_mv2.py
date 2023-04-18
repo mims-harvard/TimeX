@@ -43,7 +43,7 @@ def train_mv2(
 
             #ipdb.set_trace()
 
-            out, masks, smoother_stats, smooth_src = model(X, times, captum_input = True)
+            out, masks, ste_mask, smoother_stats, smooth_src = model(X, times, captum_input = True)
 
             if out.isnan().sum() > 0:
                 print('out', out.isnan().sum())
@@ -53,7 +53,7 @@ def train_mv2(
 
             total_eloss_list = []
             # All explanation criterion operate directly on the smoother statistics
-            exp_loss, eloss_list = exp_criterion_eval_smoothers(X, times, smoother_stats, beta, exp_criterion)
+            exp_loss, eloss_list = exp_criterion_eval_smoothers(X, times, masks, smoother_stats, beta, exp_criterion)
 
             #exp_loss /= len(logits) # Normalize out with respect to number of masks in model
 
@@ -65,7 +65,7 @@ def train_mv2(
             loss.backward()
             optimizer.step()
 
-            cum_sparse.append(((masks > 0).sum() / masks.flatten().shape[0]).item())
+            cum_sparse.append(((ste_mask).sum() / ste_mask.flatten().shape[0]).item())
             cum_clf_loss.append(clf_loss.detach().item())
             cum_exp_loss.append([eloss_list])
 
@@ -82,7 +82,7 @@ def train_mv2(
 
         # Eval after every epoch
         # Call evaluation function:
-        f1, (pred, masks, smoother_stats, smooth_src) = eval_mv2(val_tuple, model)
+        f1, (pred, masks, ste_mask, smoother_stats, smooth_src) = eval_mv2(val_tuple, model)
 
         # Early stopping procedure:
         if f1 > best_val_metric:

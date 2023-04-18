@@ -22,14 +22,14 @@ def visualize(model, test_tup, n = 3, per_class = False, class_num = None, show 
 
     model.eval()
     with torch.no_grad():
-        pred, mask_in, smoother_stats, smooth_src = model(sampX, samp_times, captum_input = False)
+        pred, mask_in, ste_mask, smoother_stats, smooth_src = model(sampX, samp_times, captum_input = False)
     pred = pred.softmax(dim=1).argmax(dim=1)
     print('pred', pred.shape)
     print('mask_in', mask_in.shape)
     print('smoother_stats', smoother_stats)
     #print(mask_in)
 
-    mask = (mask_in > 1e-9)
+    mask = (ste_mask > 0.5)
 
     title_format1 = 'y={:1d}, yhat={:1d}'
 

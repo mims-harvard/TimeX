@@ -226,6 +226,64 @@ def process_ECG(split_no = 1, device = None, base_path = ecg_base_path):
 
     return train_chunk, val_chunk, test_chunk
 
+mitecg_base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG'
+def process_MITECG(split_no = 1, device = None, base_path = mitecg_base_path):
+
+    # train = torch.load(os.path.join(loc, 'train.pt'))
+    # val = torch.load(os.path.join(loc, 'val.pt'))
+    # test = torch.load(os.path.join(loc, 'test.pt'))
+
+    split_path = 'split={}.pt'.format(split_no)
+    idx_train, idx_val, idx_test = torch.load(os.path.join(base_path, split_path))
+
+    # Ptrain, Pval, Ptest = train['samples'].transpose(1, 2), val['samples'].transpose(1, 2), test['samples'].transpose(1, 2)
+    # ytrain, yval, ytest = train['labels'], val['labels'], test['labels']
+
+    X, times, y = torch.load(os.path.join(base_path, 'all_MITECG.pt'))
+    print('y', y.unique())
+
+    Ptrain, time_train, ytrain = X[:,idx_train,:].float(), times[:,idx_train], y[idx_train].long()
+    Pval, time_val, yval = X[:,idx_val,:].float(), times[:,idx_val], y[idx_val].long()
+    Ptest, time_test, ytest = X[:,idx_test,:].float(), times[:,idx_test], y[idx_test].long()
+
+    train_chunk = ECGchunk(Ptrain, None, time_train, ytrain, device = device)
+    val_chunk = ECGchunk(Pval, None, time_val, yval, device = device)
+    test_chunk = ECGchunk(Ptest, None, time_test, ytest, device = device)
+
+    return train_chunk, val_chunk, test_chunk
+
+    # T, F = Ptrain[0].shape
+    # D = 1
+
+    # Ptrain_static_tensor = np.zeros((len(Ptrain), D))
+
+    # mf, stdf = getStats(Ptrain)
+    # #print('Before tensor_normalize_other', Ptrain.shape)
+    # Ptrain_tensor, Ptrain_static_tensor, Ptrain_time_tensor, ytrain_tensor = tensorize_normalize_ECG(Ptrain, ytrain, mf, stdf)
+    # Pval_tensor, Pval_static_tensor, Pval_time_tensor, yval_tensor = tensorize_normalize_ECG(Pval, yval, mf, stdf)
+    # Ptest_tensor, Ptest_static_tensor, Ptest_time_tensor, ytest_tensor = tensorize_normalize_ECG(Ptest, ytest, mf, stdf)
+    # #print('After tensor_normalize (X)', Ptrain_tensor.shape)
+
+    # Ptrain_tensor = Ptrain_tensor.permute(2, 0, 1)
+    # Pval_tensor = Pval_tensor.permute(2, 0, 1)
+    # Ptest_tensor = Ptest_tensor.permute(2, 0, 1)
+
+    # #print('Before s-permute', Ptrain_time_tensor.shape)
+    # Ptrain_time_tensor = Ptrain_time_tensor.squeeze(2).permute(1, 0)
+    # Pval_time_tensor = Pval_time_tensor.squeeze(2).permute(1, 0)
+    # Ptest_time_tensor = Ptest_time_tensor.squeeze(2).permute(1, 0)
+
+    # # print('X', Ptrain_tensor)
+    # # print('time', Ptrain_time_tensor)
+    # print('X', Ptrain_tensor.shape)
+    # print('time', Ptrain_time_tensor.shape)
+    # # print('time of 0', Ptrain_time_tensor.sum())
+    # # print('train under 0', (Ptrain_tensor > 1e-10).sum() / Ptrain_tensor.shape[1])
+    # #print('After s-permute', Ptrain_time_tensor.shape)
+    # #exit()
+
+    # return train_chunk, val_chunk, test_chunk
+
 class EpiDataset(torch.utils.data.Dataset):
     def __init__(self, X, times, y, augment_negative = None):
         self.X = X # Shape: (T, N, d)

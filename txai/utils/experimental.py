@@ -6,12 +6,11 @@ import matplotlib.pyplot as plt
 from txai.utils.data.preprocess import zip_x_time_y
 from txai.utils.data import process_Synth, process_PAM, process_Epilepsy
 from txai.synth_data.generate_spikes import SpikeTrainDataset
-from txai.utils.evaluation import ground_truth_auroc
 from txai.utils.data import EpiDataset, PAMDataset
 
-from txai.models.transformer_simple import TransformerMVTS
-from txai.models.gumbelmask_model import GumbelMask
-from txai.models.kumamask_model import TSKumaMask_TransformerPred as TSKumaMask
+from txai.models.encoders.transformer_simple import TransformerMVTS
+# from txai.models.gumbelmask_model import GumbelMask
+# from txai.models.kumamask_model import TSKumaMask_TransformerPred as TSKumaMask
 
 
 # Import all explainers:
@@ -44,7 +43,10 @@ def get_explainer(key, args, device = None):
     elif key == 'ig':
         def explainer(model, x, time, y): 
             IG = IntegratedGradients(model)
-            attr = IG.attribute(x.unsqueeze(dim=0), target = y, additional_forward_args = (time.transpose(0,1), None, True)).squeeze()
+            # Transform inputs to captum-like (batch first):
+            x = x.transpose(0, 1)
+            time = time.transpose(0,1)
+            attr = IG.attribute(x, target = y, additional_forward_args = (time, None, True))
             return attr
 
     elif key == 'random':

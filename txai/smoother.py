@@ -84,6 +84,9 @@ def smoother(src, time, p, mask = None):
 
             if mask is not None:
                 coef = coef * mask[:,:(t+1)].transpose(0, 1).squeeze() # Mask after softmax
+                #coef = coef * mask.transpose(0, 1).squeeze()
+
+            #coef = coef[:(t+1),:] / (coef[:(t+1),:].sum() + 1e-9)
 
             #print('coef', coef.shape)
 
@@ -95,6 +98,42 @@ def smoother(src, time, p, mask = None):
         #     pass
 
         return new_src
+
+def exponential_smoother(src, time, p):
+    '''
+    Simple exponential smoother on whole sample
+
+    NOTE: only works on single-channel, but simple to extend to multivariate
+
+    p: (B,) tensor
+    '''
+
+    #print('p', p.shape)
+
+    T, B, d = src.shape
+
+    #coef = torch.zeros(T, T, B, device = src.device)
+
+    #print('p', p)
+
+    coef = torch.cat([torch.eye(T, device = src.device).unsqueeze(-1) * p[i] for i in range(B)], dim = -1)
+
+    #print('coef 1', coef)
+
+    coef[0,0,:] = 1 # Top left is 1
+
+    for i in range(T):
+        restcol = ((1 - p).repeat(1,T - i).transpose(0,1) ** torch.arange(T - i, device = p.device).unsqueeze(-1).repeat(1,B))
+        #print('rc', restcol.shape)
+        coef[i,i:,:] = coef[i,i,:].unsqueeze(0).repeat(T-i,1) * restcol
+
+    #print('coef', coef)
+    smoothed_src = torch.bmm(coef.permute(2, 0, 1), src.transpose(1, 0))
+
+    #print('Smoothed', smoothed_src.shape)
+
+    return smoothed_src.transpose(0, 1)
+
 
 if __name__ == '__main__':
     # TESTING

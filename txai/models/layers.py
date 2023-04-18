@@ -643,7 +643,7 @@ def multi_head_attention_forward_differentiable(
     # Need to zero-out attention values post-softmax:
     if attn_mask is not None and (not (bool_attn_mask)):
         #print('masking')
-        attn_output_weights = torch.mul(attn_mask, attn_output_weights)
+        attn_output_weights = torch.mul(attn_mask, attn_output_weights) # Differentiable masking of attention
         #print('attn weights', attn_output_weights.sum())
         # Rescale attn values:
 

@@ -150,6 +150,7 @@ class TransformerMVTS(nn.Module):
             src_mask = None,
             attn_mask = None,
             aggregate = True,
+            get_both_agg_full = False,
         ):
         #print('src at entry', src.isnan().sum())
 
@@ -177,14 +178,15 @@ class TransformerMVTS(nn.Module):
             print('self.MLP_encoder(src)', src.shape)
 
         # Must flip times to (T, B) for positional encoder
-        if src.isnan().sum() > 0:
-            print('src before pe', src.isnan().sum())
+        # if src.detach().clone().isnan().sum() > 0:
+        #     print('src before pe', src.isnan().sum())
         pe = self.pos_encoder(times) # Positional encoder
+        pe = pe.to(src.device)
         x = torch.cat([pe, src], axis=2) # Concat position and src
 
         if pe.isnan().sum() > 0:
             print('pe', pe.isnan().sum())
-        if src.isnan().sum() > 0:
+        if src.detach().clone().isnan().sum() > 0:
             print('src after pe', src.isnan().sum())
 
         if show_sizes:
@@ -204,7 +206,7 @@ class TransformerMVTS(nn.Module):
         # mask is (B*n_heads,T,T) - if None has no effect
         if x.isnan().sum() > 0:
             print('before enc', x.isnan().sum())
-        output, attn = self.transformer_encoder(x, src_key_padding_mask = src_mask, mask = attn_mask)
+        output_preagg, attn = self.transformer_encoder(x, src_key_padding_mask = src_mask, mask = attn_mask)
 
         if show_sizes:
             print('transformer_encoder', output.shape)
@@ -219,9 +221,9 @@ class TransformerMVTS(nn.Module):
 
             if self.aggreg == 'mean':
                 lengths2 = lengths.unsqueeze(1)
-                output = torch.sum(output, dim=0) / (lengths2 + 1)
+                output = torch.sum(output_preagg, dim=0) / (lengths2 + 1)
             elif self.aggreg == 'max':
-                output, _ = torch.max(output, dim=0)
+                output, _ = torch.max(output_preagg, dim=0)
 
             if show_sizes:
                 print('self.aggreg: {}'.format(self.aggreg), output.shape)
@@ -231,8 +233,13 @@ class TransformerMVTS(nn.Module):
 
         # TODO: static if aggregate is False
 
+        if get_both_agg_full:
+            return output, output_preagg
 
-        return output
+        if aggregate:
+            return output
+        else:
+            return output_preagg
 
     def forward(self, 
             src, 
@@ -242,6 +249,8 @@ class TransformerMVTS(nn.Module):
             show_sizes = False, # Used for debugging
             attn_mask = None,
             src_mask = None,
+            get_embedding = False,
+            get_agg_embed = False,
             ):
         '''
         * Ensure all inputs are cuda before calling forward method
@@ -262,18 +271,24 @@ class TransformerMVTS(nn.Module):
 
         #print('src_mask', src_mask.shape)
 
-        out = self.embed(src, times,
+        out, out_full = self.embed(src, times,
             static = static,
             captum_input = captum_input,
             show_sizes = show_sizes,
             attn_mask = attn_mask,
-            src_mask = src_mask)
+            src_mask = src_mask,
+            get_both_agg_full = True)
 
         output = self.mlp(out)
 
         if show_sizes:
             print('self.mlp(output)', output.shape)
 
-        if self.no_return_attn:
-            return output
-        return output 
+        # if self.no_return_attn:
+        #     return output
+        if get_embedding:
+            return output, out_full
+        elif get_agg_embed:
+            return output, out, out_full
+        else:
+            return output 
