@@ -105,8 +105,10 @@ def main(args):
                 # exit()
                 generated_exps[:,iters[i]:iters[i+1],:] = torch.stack(out['mask_in'], dim = 0).sum(dim=0).unsqueeze(-1).transpose(0,1)
     elif args.exp_method == "winit":
-        generated_exps = torch.randn_like(X)
+        
+
         print("WIP")
+        generated_exps = torch.randn_like(X)
     else: # Use other explainer APIs:
         model = get_model(args, X)
         model.load_state_dict(torch.load(args.model_path))
