@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -50,13 +51,13 @@ def main(args):
 
     # Switch on loading test data:
     if Dname == 'freqshape':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/FreqShape')
+        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'FreqShape')
     elif Dname == 'seqcombsingle':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingle')
+        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombSingle')
     elif Dname == 'scs_better':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleBetter')
+        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombSingleBetter')
     elif Dname == 'freqshapeud':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/FreqShapeUD')
+        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'FreqShapeUD')
     
     test = D['test']
 
@@ -133,10 +134,11 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--exp_method', type = str, help = "Options: ['ig', 'dyna', 'ours']")
+    parser.add_argument('--exp_method', type = str, help = "Options: ['ig', 'dyna', 'winit', 'ours']")
     parser.add_argument('--dataset', type = str)
     parser.add_argument('--split_no', default = 1)
     parser.add_argument('--model_path', type = str, help = 'only time series transformer right now')
+    parser.add_argument('--data_path', default="/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/", type = str, help = 'path to datasets root')
 
     args = parser.parse_args()
 
