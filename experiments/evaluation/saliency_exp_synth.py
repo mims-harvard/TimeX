@@ -10,6 +10,7 @@ from txai.utils.experimental import get_explainer
 from txai.vis.vis_saliency import vis_one_saliency
 from txai.utils.data import process_Synth
 from txai.synth_data.simple_spike import SpikeTrainDataset
+from winit_wrapper import WinITWrapper, aggregate_scores
 
 from txai.models.modelv6_v2 import Modelv6_v2
 
@@ -104,11 +105,30 @@ def main(args):
                 # print(torch.stack(out['mask_in'], dim = 0).sum(dim=0).shape)
                 # exit()
                 generated_exps[:,iters[i]:iters[i+1],:] = torch.stack(out['mask_in'], dim = 0).sum(dim=0).unsqueeze(-1).transpose(0,1)
-    elif args.exp_method == "winit":
-        
 
-        print("WIP")
-        generated_exps = torch.randn_like(X)
+    elif args.exp_method == "winit":
+        model = get_model(args, X)
+        model.load_state_dict(torch.load(args.model_path))
+        model.to(device)
+        model.eval()
+        winit_path = Path(args.model_path).parent / f"winit_split={args.split_no}/"
+        winit = WinITWrapper(
+            device, 
+            num_features=D["test"][0].shape[-1], 
+            data_name=Dname, 
+            path=winit_path
+        )
+        winit.set_model(model)
+        winit.load_generators()
+        # winit wrapper expects shape of (batch, num_features, num_times) for X
+        # and (batch, num_times) for times
+        X_perm = X.permute(1, 2, 0)
+        times_perm = times.permute(1, 0)
+        attribution = winit.attribute(X_perm, times_perm)
+        # paper notes best performance with mean aggregation
+        generated_exps = torch.from_numpy(aggregate_scores(attribution, "mean"))
+        # permute (batch, features, times) back to (times, batch, features)
+        generated_exps = generated_exps.permute(2, 0, 1)
     else: # Use other explainer APIs:
         model = get_model(args, X)
         model.load_state_dict(torch.load(args.model_path))
