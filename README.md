@@ -23,3 +23,25 @@ Instructions for preparing datsets
  6. Run `python preprocessing/cogpilot.py`
 
  
+
+
+### Baseline notes: WinIT
+
+Train generator models with:
+
+```bash
+python experiments/evaluation/winit_wrapper.py \
+    --dataset scs_better \
+    --data_path <path to dataset directory> \
+    --models_path <path to models directory>
+```
+
+Evaluate:
+
+```bash
+python experiments/evaluation/saliency_exp_synth.py \
+    --dataset scs_better \
+    --data_path <path to to dataset directory>  \
+    --model_path <path to models>/Scomb_transformer_split\=1_cpu.pt \
+    --exp_method winit
+```
