@@ -1,0 +1,3 @@
+[submodule "txai/baselines/WinIT"]
+	path = txai/baselines/WinIT
+	url = https://github.com/layer6ai-labs/WinIT.git
