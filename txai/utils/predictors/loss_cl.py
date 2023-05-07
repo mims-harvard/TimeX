@@ -2,6 +2,8 @@ import math
 import torch
 import torch.nn.functional as F
 
+from txai.utils.functional import js_divergence
+
 class SimCLRLoss(torch.nn.Module):
     def __init__(self, temperature = 1.0):
         super(SimCLRLoss, self).__init__()
@@ -33,6 +35,51 @@ class SimCLRLoss(torch.nn.Module):
             return score.mean(), sim_pos.exp().sum(dim=-1), sim_neg.exp().sum(dim=-1)
         else:
             return score.mean()
+
+class LabelConsistencyLoss(torch.nn.Module):
+    def __init__(self):
+        super(LabelConsistencyLoss, self).__init__()
+
+    def forward(self, mask_labels, full_labels):    
+        '''
+        embeddings: (B, d) shape
+        positives: (B, d, n_pos) shape
+        negatives: (B, d, n_neg) shape
+        '''
+        
+        #embeddings = F.normalize(embeddings.unsqueeze(1), dim = -1) # Add 1 to embeddings dimension
+        mask_labels = mask_labels.softmax(dim=-1)
+        full_labels = full_labels.softmax(dim=-1)
+
+        # Enumerate batch:
+        combs = torch.combinations(torch.arange(mask_labels.shape[0]), r = 2, with_replacement = False)
+
+        mask_labels_expanded_lhs = mask_labels[combs[:,0],:]
+        mask_labels_expanded_rhs = mask_labels[combs[:,1],:]
+
+        full_labels_expanded_lhs = full_labels[combs[:,0],:]    
+        full_labels_expanded_rhs = full_labels[combs[:,1],:]
+
+        # print('embeddings', embeddings.shape)
+        # print('pos', positives.shape)
+        # print('negatives', negatives.shape)
+
+        # Sim to positives:
+        score_mask = js_divergence(mask_labels_expanded_lhs, mask_labels_expanded_rhs)
+
+        score_full = js_divergence(full_labels_expanded_lhs, full_labels_expanded_rhs)
+
+        score = (score_mask - score_full).pow(2).mean()
+
+        # print('pos score', sim_pos.exp().sum(dim=-1))
+        # print('neg score', sim_neg.exp().sum(dim=-1))
+
+        #score = -1.0 * torch.log(sim_pos.exp().sum(dim=-1) / sim_neg.exp().sum(dim=-1))
+
+        # if get_all_scores:
+        #     return score.mean(), sim_pos.exp().sum(dim=-1), sim_neg.exp().sum(dim=-1)
+        # else:
+        return score
 
 class ConceptTopologyLoss(torch.nn.Module):
     def __init__(self, temperature = 1.0, prop_select = 0.5):
@@ -67,15 +114,21 @@ class ConceptTopologyLoss(torch.nn.Module):
         return scores.mean()
 
 class ConceptConsistencyLoss(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, normalize_distance = False):
         super(ConceptConsistencyLoss, self).__init__()
+        self.normalize_distance = normalize_distance
 
     def forward(self, original_embeddings, concept_embeddings):
         original_embeddings = F.normalize(original_embeddings, dim = -1)
         concept_embeddings = F.normalize(concept_embeddings, dim = -1)
 
-        original_sim_mat = torch.matmul(original_embeddings, original_embeddings.transpose(0,1))
-        concept_sim_mat = torch.matmul(concept_embeddings, concept_embeddings.transpose(0,1))
+        original_sim_mat = torch.matmul(original_embeddings, original_embeddings.transpose(0,1)) # Size (B, B)
+        concept_sim_mat = torch.matmul(concept_embeddings, concept_embeddings.transpose(0,1)) # Size (B, B)
+
+        # Normalize by batch:
+        if self.normalize_distance:
+            original_sim_mat = original_sim_mat / original_sim_mat.mean()
+            concept_sim_mat = concept_sim_mat / concept_sim_mat.mean()
 
         score = (original_sim_mat - concept_sim_mat).pow(2).mean()
 

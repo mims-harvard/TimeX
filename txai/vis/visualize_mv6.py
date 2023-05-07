@@ -2,19 +2,21 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from txai.vis.visualize_cbm1 import get_x_mask_borders
+from txai.models.modelv6_v2 import Modelv6_v2
+from txai.models.modelv6_v2_concepts import Modelv6_v2_concepts
 
 def plot_heatmap(mask_logits, smooth_src, ax, fig):
-        x_range = torch.arange(smooth_src.shape[0])
-        px, py = np.meshgrid(np.linspace(min(x_range), max(x_range), len(x_range) + 1), [min(smooth_src), max(smooth_src)])
-        #ax[0,i].imshow(mask_logits[i,...].T, alpha = 0.5, cmap = 'Greens')
-        cmap = ax.pcolormesh(px, py, mask_logits.T, alpha = 0.5, cmap = 'Greens')
-        fig.colorbar(cmap, ax = ax)
+    x_range = torch.arange(smooth_src.shape[0])
+    px, py = np.meshgrid(np.linspace(min(x_range), max(x_range), len(x_range) + 1), [min(smooth_src), max(smooth_src)])
+    #ax[0,i].imshow(mask_logits[i,...].T, alpha = 0.5, cmap = 'Greens')
+    cmap = ax.pcolormesh(px, py, mask_logits.T, alpha = 0.5, cmap = 'Greens')
+    fig.colorbar(cmap, ax = ax)
 
 def vis_concepts(model, test_tup, show = True):
 
     src, times, y = test_tup
 
-    found_masks, found_smooth_src = model.find_closest_for_prototypes(src, times, captum_input = False)
+    found_masks, found_smooth_src = model.get_concepts(src, times, captum_input = False)
 
     found_masks_np = [found_masks[i].cpu().numpy() for i in range(len(found_masks))]
     found_smooth_src_np = [found_smooth_src[i].cpu().numpy() for i in range(len(found_smooth_src))]
@@ -22,8 +24,59 @@ def vis_concepts(model, test_tup, show = True):
     fig, ax = plt.subplots(1, model.n_concepts)
 
     for i in range(model.n_concepts):
-        ax[i].plot(found_smooth_src_np[i][...,0])
+        ax[i].plot(found_smooth_src_np[i][...,0], color = 'black')
+        ax[i].set_title('Concept {}'.format(i))
         plot_heatmap(np.expand_dims(found_masks_np[i], axis = 1), found_smooth_src_np[i][...,0], ax[i], fig)
+
+    if show:
+        plt.show()
+
+def vis_prototypes(model, test_tup, show = True, k = 3):
+
+    src, times, y = test_tup
+
+    with torch.no_grad():
+        found_masks, found_smooth_src = model.get_concepts(src, times, captum_input = False, k = k)
+
+    found_masks_np = [found_masks[i].cpu().numpy() for i in range(len(found_masks))]
+    found_smooth_src_np = [found_smooth_src[i].cpu().numpy() for i in range(len(found_smooth_src))]
+
+    fig, ax = plt.subplots(k, model.n_prototypes, figsize = (7, 20), dpi = 200)
+
+    for i in range(model.n_prototypes):
+        for j in range(k):
+            ax[j, i].plot(found_smooth_src_np[i][:,j,0], color = 'black')
+            #ax[j, i].set_title('Prototype {}'.format(i))
+            plot_heatmap(np.expand_dims(found_masks_np[i][j,:], axis = 1), found_smooth_src_np[i][:,j,0], ax[j, i], fig)
+
+    if show:
+        plt.show()
+
+def vis_exps_w_sim(X_query, mask_query, X_nearby_list, mask_nearby_list, show = True):
+
+    Nq = X_query.shape[1]
+
+    #plt.figure(dpi=200)
+    fig, ax = plt.subplots(X_nearby_list[0].shape[1] + 1, Nq, sharex = True, dpi = 200)
+
+    xr = np.arange(X_query.shape[0])
+
+    for i in range(Nq):
+
+        Xq_ref = X_nearby_list[i]
+        mask_ref = mask_nearby_list[i]
+
+        ax[0,i].plot(xr, X_query[:,i,:], color = 'black')
+        # Plot heatmap:
+        plot_heatmap(np.expand_dims(mask_query[i,:], axis = -1), X_query[:,i,:], ax = ax[0,i], fig = fig)
+        ax[0,i].set_title('Example {}'.format(i))
+
+        for j in range(Xq_ref.shape[1]):
+            mq_ij = np.expand_dims(mask_ref[j,:], axis = 1)
+            print('mq', mq_ij.shape)
+
+            ax[(j+1),i].plot(xr, Xq_ref[:,j,:], color = 'black')
+            plot_heatmap(mq_ij, Xq_ref[:,j,:], ax = ax[(j+1),i], fig = fig)
 
     if show:
         plt.show()
@@ -32,7 +85,7 @@ def logical_or_mask_along_explanations(total_mask):
     tmask = (total_mask.sum(dim=-1) > 0).float() # Effectively ORs along last dimension
     return tmask
 
-def visualize_explanations(model, test_tup, n = 3, class_num = None, show = True, heatmap = True, topk = None):
+def visualize_explanations(model, test_tup, n = 3, class_num = None, show = True, heatmap = True, topk = None, seed = None):
     '''
     TODO: Rewrite
 
@@ -49,8 +102,12 @@ def visualize_explanations(model, test_tup, n = 3, class_num = None, show = True
     choices = np.arange(X.shape[1])
     if class_num is not None:
         choices = choices[(y == class_num).cpu().numpy()]
+    np.random.seed(seed)
     inds = torch.from_numpy(np.random.choice(choices, size = (n,), replace = False)).long()
+    #if isinstance(model, Modelv6_v2) or isinstance(model, Modelv6_v2_concepts):
     num_on_x = (1 + model.n_explanations)
+    # else:
+    #     num_on_x = 1 + model.n_concepts
     fig, ax = plt.subplots(num_on_x, n, sharex = True)
 
     sampX, samp_times, samp_y = X[:,inds,:], times[:,inds], y[inds]
@@ -107,11 +164,19 @@ def visualize_explanations(model, test_tup, n = 3, class_num = None, show = True
             for k in range(len(block_inds)):
                 ax[0,i].axvspan(*block_inds[k], facecolor = 'green', alpha = 0.4)
 
+        # cscores = out['concept_scores']#.squeeze() # (B, Nc)
+        # cselect_inds = out['concept_selections_inds']
+        # print('cselect_inds\n', cselect_inds)
+        #exit()
+
         for j in range(num_on_x-1):
 
             # Add subtitles:
             #ax[(j+1)][i].set_title('a={}, p={}'.format())
             ax[(j+1)][i].plot(x_range, smooth_src[j,:,i,:].cpu().numpy(), color = 'black')
+
+            #print('cscores', cscores)
+            #ax[(j+1)][i].set_title('score = {:.4f}'.format(cscores[i,j].detach().clone().item()))
 
             if heatmap:
                 if topk is not None:
@@ -133,14 +198,3 @@ def visualize_explanations(model, test_tup, n = 3, class_num = None, show = True
 
     if show:
         plt.show()
-
-def visualize_concepts():
-    '''
-    Visualizes samples by connecting them to concepts
-    '''
-    pass
-
-
-
-
-

@@ -115,7 +115,7 @@ class TransformerMVTS(nn.Module):
         self.relu = nn.ReLU()
 
         if self.enc_dropout is not None:
-            self.enc_dropout_layer = nn.Dropout(dropout)
+            self.enc_dropout_layer = nn.Dropout(self.enc_dropout)
         else:
             self.enc_dropout_layer = lambda x: x # Identity arbitrary function
 
@@ -215,7 +215,6 @@ class TransformerMVTS(nn.Module):
         if aggregate:
             # Transformer embeddings through MLP --------------------------------------
             #mask2 = mask.permute(1, 0).unsqueeze(2).long()
-
             if show_sizes:
                 print('mask.permute(1, 0).unsqueeze(2).long()', mask2.shape)
 

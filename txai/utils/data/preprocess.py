@@ -239,7 +239,7 @@ def process_MITECG(split_no = 1, device = None, base_path = mitecg_base_path):
     # Ptrain, Pval, Ptest = train['samples'].transpose(1, 2), val['samples'].transpose(1, 2), test['samples'].transpose(1, 2)
     # ytrain, yval, ytest = train['labels'], val['labels'], test['labels']
 
-    X, times, y = torch.load(os.path.join(base_path, 'all_MITECG.pt'))
+    X, times, y = torch.load(os.path.join(base_path, 'all_data.pt'))
     print('y', y.unique())
 
     Ptrain, time_train, ytrain = X[:,idx_train,:].float(), times[:,idx_train], y[idx_train].long()

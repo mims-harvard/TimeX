@@ -93,6 +93,23 @@ def eval_mv4(test_tuple, model, masked = False):
     return f1, out
 
 @torch.no_grad()
+def eval_mv4_idexp(test_tuple, test_tuple_external, model, masked = False):
+    # Also evaluates models above v4
+    model.eval()
+    X, times, y = test_tuple
+    out = model(X, times, src_id = test_tuple_external[0], captum_input = False)
+
+    if masked:
+        pred = out['pred_mask']
+    else:
+        pred = out['pred']
+
+    ynp = y.cpu().numpy()
+    prednp = pred.argmax(dim=1).detach().cpu().numpy()
+    f1 = f1_score(ynp, prednp, average='macro')
+    return f1, out
+
+@torch.no_grad()
 def eval_mvts_transformer(test_tuple, model):
     '''
     Returns f1 score
