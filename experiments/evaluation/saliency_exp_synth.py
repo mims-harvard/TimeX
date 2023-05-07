@@ -13,6 +13,7 @@ from txai.synth_data.simple_spike import SpikeTrainDataset
 from winit_wrapper import WinITWrapper, aggregate_scores
 
 from txai.models.modelv6_v2 import Modelv6_v2
+from txai.models.modelv6_v2_concepts import Modelv6_v2_concepts
 
 from txai.utils.evaluation import ground_truth_xai_eval
 
@@ -41,6 +42,31 @@ def get_model(args, X):
             trans_dropout = 0.1,
             d_pe = 16,
         )
+    
+    elif args.dataset == 'scs_inline':
+        model = TransformerMVTS(
+            d_inp = 1,
+            max_len = 200,
+            n_classes = 4,
+            nlayers = 2,
+            nhead = 1,
+            trans_dim_feedforward = 128,
+            trans_dropout = 0.2,
+            d_pe = 16,
+            # aggreg = 'mean',
+            # norm_embedding = True
+        )
+    
+    elif args.dataset == 'scs_fixone':
+        model = TransformerMVTS(
+            d_inp = X.shape[-1],
+            max_len = X.shape[0],
+            nlayers = 2,
+            n_classes = 4,
+            trans_dim_feedforward = 32,
+            trans_dropout = 0.1,
+            d_pe = 16,
+        )
 
     #model = torch.compile(model)
 
@@ -58,12 +84,16 @@ def main(args):
     elif Dname == 'scs_better':
         D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombSingleBetter')
     elif Dname == 'freqshapeud':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'FreqShapeUD')
+        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/FreqShapeUD')
+    elif Dname == 'scs_inline':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleInline')
+    elif Dname == 'scs_fixone':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleFixOne')
     
     test = D['test']
 
 
-    if Dname == 'scs_better' or Dname == 'seqcombsingle':
+    if Dname == 'scs_better' or Dname == 'seqcombsingle' or Dname == 'scs_inline':
         y = test[2]
         X = test[0][:,(y != 0),:]
         times = test[1][:,y != 0]
@@ -76,7 +106,10 @@ def main(args):
 
     if args.exp_method == 'ours':
         sdict, config = torch.load(args.model_path)
-        model = Modelv6_v2(**config)
+        if args.concept_v:
+            model = Modelv6_v2_concepts(**config)
+        else:
+            model = Modelv6_v2(**config)
         model.load_state_dict(sdict)
         model.eval()
         model.to(device)
@@ -96,14 +129,11 @@ def main(args):
             with torch.no_grad():
                 out = model.get_saliency_explanation(batch_X, batch_times, captum_input = False)
 
+
             # NOTE: below capability only works with univariate for now - will need to edit after adding MV to model
             if i == (len(iters) - 1):
-                #print(torch.stack(out['mask_in'], dim = 0).sum(dim=0).shape)
                 generated_exps[:,iters[i]:,:] = torch.stack(out['mask_in'], dim = 0).sum(dim=0).unsqueeze(-1).transpose(0,1)
             else:
-                # print(out['mask_in'][0].shape)
-                # print(torch.stack(out['mask_in'], dim = 0).sum(dim=0).shape)
-                # exit()
                 generated_exps[:,iters[i]:iters[i+1],:] = torch.stack(out['mask_in'], dim = 0).sum(dim=0).unsqueeze(-1).transpose(0,1)
 
     elif args.exp_method == "winit":
@@ -145,6 +175,7 @@ def main(args):
                 exp = explainer(model, X[:,i,:].clone(), times[:,i].clone().unsqueeze(1), y = y[i].unsqueeze(0).clone())
             else:
                 exp = explainer(model, X[:,i,:].unsqueeze(1).clone(), times[:,i].unsqueeze(-1).clone(), y[i].unsqueeze(0).clone())
+            #print(exp.shape)
             generated_exps[:,i,:] = exp
     
     
@@ -162,6 +193,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type = str)
     parser.add_argument('--split_no', default = 1)
     parser.add_argument('--model_path', type = str, help = 'only time series transformer right now')
+    parser.add_argument('--concept_v', action = 'store_true')
     parser.add_argument('--data_path', default="/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/", type = str, help = 'path to datasets root')
 
     args = parser.parse_args()

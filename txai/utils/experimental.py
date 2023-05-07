@@ -51,7 +51,7 @@ def get_explainer(key, args, device = None):
 
     elif key == 'random':
         def explainer(model, x, time, y):
-            return (torch.randn_like(x) > 1).float()
+            return torch.randn_like(x).squeeze(1).float()
 
     elif key == 'attn':
         pass

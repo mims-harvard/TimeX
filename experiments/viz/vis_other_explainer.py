@@ -8,6 +8,7 @@ from txai.utils.experimental import get_explainer
 from txai.vis.vis_saliency import vis_one_saliency
 from txai.utils.data import process_Synth
 from txai.synth_data.simple_spike import SpikeTrainDataset
+from txai.utils.data.preprocess import process_Epilepsy, process_MITECG
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -34,6 +35,50 @@ def get_model(args, X):
             trans_dropout = 0.1,
             d_pe = 16,
         )
+    
+    elif args.dataset == 'epilepsy':
+        model = TransformerMVTS(
+            d_inp = X.shape[-1],
+            max_len = X.shape[0],
+            n_classes = 2,
+            trans_dim_feedforward = 16,
+            trans_dropout = 0.1,
+            d_pe = 16,
+        )
+    elif args.dataset == 'scs_inline':
+        model = TransformerMVTS(
+            d_inp = 1,
+            max_len = 200,
+            n_classes = 4,
+            nlayers = 2,
+            nhead = 1,
+            trans_dim_feedforward = 128,
+            trans_dropout = 0.2,
+            d_pe = 16,
+            # aggreg = 'mean',
+            # norm_embedding = True
+        )
+    elif args.dataset == 'scs_fixone':
+        model = TransformerMVTS(
+            d_inp = X.shape[-1],
+            max_len = X.shape[0],
+            nlayers = 2,
+            n_classes = 4,
+            trans_dim_feedforward = 32,
+            trans_dropout = 0.1,
+            d_pe = 16,
+        )
+    
+    elif args.dataset == 'mitecg_simple':
+        model = TransformerMVTS(
+            d_inp = X.shape[-1],
+            max_len = X.shape[0],
+            nlayers = 1,
+            n_classes = 2,
+            trans_dim_feedforward = 32,
+            trans_dropout = 0.1,
+            d_pe = 16,
+        )
 
     return model
 
@@ -53,14 +98,12 @@ def main(test, args):
         ynp = y.detach().clone().cpu().numpy()
         choices = choices[ynp == args.class_num]
 
-    inds = np.random.choice(choices, size = (3,))
+    np.random.seed(args.sample_seed)
+    inds = np.random.choice(choices, size = (3,), replace = False)
     sampX, samptime, sampy = X[:,inds,:], time[:,inds], y[inds]
     sampX = sampX.to(device)
     samptime = samptime.to(device)
     sampy = sampy.to(device)
-
-    # print('X', sampX.shape)
-    # print('time', samptime.shape)
 
     explainer, _ = get_explainer(key = args.exp_method, args = args, device = device)
 
@@ -98,6 +141,7 @@ if __name__ == '__main__':
     parser.add_argument('--split_no', default = 1)
     parser.add_argument('--model_path', type = str, help = 'only time series transformer right now')
     parser.add_argument('--class_num', default = None, type = int)
+    parser.add_argument('--sample_seed', default = None, type = int)
 
     args = parser.parse_args()
 
@@ -117,8 +161,17 @@ if __name__ == '__main__':
     elif D == 'freqshapeud':
         D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/FreqShapeUD')
         test = D['test']
+    elif D == 'scs_inline':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleInline')
+        test = D['test']
+    elif D == 'scs_fixone':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleFixOne')
+        test = D['test']
     elif D == 'epilepsy':
         _, _, test = process_Epilepsy(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Epilepsy/')
+        test = (test.X, test.time, test.y)
+    elif D == 'mitecg_simple':
+        _, _, test = process_MITECG(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Simple/')
         test = (test.X, test.time, test.y)
 
     main(test, args)

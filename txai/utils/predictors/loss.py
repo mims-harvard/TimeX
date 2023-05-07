@@ -235,7 +235,7 @@ class GSATLoss(nn.Module):
         if torch.any(att < 0):
             print('ALERT - att less than 0')
             exit()
-        info_loss = (att * torch.log(att/self.r + 1e-6) + (1-att) * torch.log((1-att)/(1-self.r+1e-6) + 1e-6)).mean()
+        info_loss = (att * torch.log(att/self.r + 1e-6) + (1-att) * torch.log((1-att)/(1-self.r + 1e-6) + 1e-6)).mean()
         if torch.any(torch.isnan(info_loss)):
             print('INFO LOSS NAN')
             exit()
@@ -320,3 +320,47 @@ class PairwiseDecorrelation(nn.Module):
 
     def forward(self, mask_list):
         return (mask_list[0] * mask_list[1]).mean() 
+
+class EntropyConceptSimDistribution(nn.Module):
+    def __init__(self):
+        super(EntropyConceptSimDistribution, self).__init__()
+    def forward(self, ze, zc):
+        # ze: size (B, d_z)
+        # zc: size (Nc, naug, d_z)
+        Nc, naug, _ = zc.shape
+
+        ze = F.normalize(ze, dim = -1)
+        zc = F.normalize(zc, dim = -1)
+        #zc = zcon_dist.flatten(0, 1).repeat(B, 1) # Size (Nc x naug, d_z) -> (B x Nc x naug, d_z)
+        ze = ze.unsqueeze(0).repeat(Nc, 1, 1) # Shape (Nc, B, d_z)
+        zc = zc.transpose(1, 2) # Shape (Nc, d_z, naug)
+
+        sims = torch.bmm(ze, zc).transpose(0, 1) # Shape (Nc, B, naug) -> (B, Nc, naug)
+
+        # Take mean of distances to all concept embeddings:
+        sim_probs = sims.mean(dim = -1).softmax(dim = -1) # Shape (B, Nc) -> (B, Nc)
+
+        # Take entropy loss across sim distribution:
+        ent = -1.0 * (torch.log(sim_probs + 1e-9) * sim_probs).sum(dim=-1).mean()
+
+        return ent
+
+class EntropyPrototypeSimDistribution(nn.Module):
+    def __init__(self):
+        super(EntropyPrototypeSimDistribution, self).__init__()
+    def forward(self, ze, zp):
+        # ze: size (B, d_z)
+        # zp: size (Np, d_z)
+
+        ze = F.normalize(ze, dim = -1)
+        zp = F.normalize(zp, dim = -1)
+
+        sims = torch.matmul(ze, zp.transpose(0, 1)) # Shape (B, Np)
+
+        # Take mean of distances to all concept embeddings:
+        sim_probs = sims.softmax(dim = -1) # Shape (B, Nc) -> (B, Nc)
+
+        # Take entropy loss across sim distribution:
+        ent = -1.0 * (torch.log(sim_probs + 1e-9) * sim_probs).sum(dim=-1).mean()
+
+        return ent

@@ -76,7 +76,7 @@ for i in range(1, 6):
         n_explanations = 2,
         gsat_r = 0.5,
         transformer_args = targs,
-        trend_smoother = True,
+        trend_smoother = False,
         size_mask_target_val = 0.2,
         use_window = False,
         ablation_parameters = abl_params,
@@ -93,7 +93,7 @@ for i in range(1, 6):
 
     optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-4, weight_decay = 0.001)
     
-    spath = 'models/v6_exp8_gsatw={:.2f}_cw={:.2f}_100ep_split={}.pt'.format(gsat_weight,connect_weight,i)
+    spath = 'models/v6_exp8_gsatw={:.2f}_cw={:.2f}_retrial_nosmooth_split={}.pt'.format(gsat_weight,connect_weight,i)
 
     #model = torch.compile(model)
 

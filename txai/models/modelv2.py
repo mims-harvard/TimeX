@@ -459,7 +459,7 @@ class MaskGenStochasticDecoder_NoCycleParam(nn.Module):
             d_z, 
             max_len,
             d_pe = 16,
-            trend_smoother = True,
+            trend_smoother = False,
             agg = 'max',
             pre_agg_mlp_d_z = 32,
             trend_net_d_z = 32,
@@ -467,6 +467,7 @@ class MaskGenStochasticDecoder_NoCycleParam(nn.Module):
             trans_dec_args = trans_decoder_default_args,
             n_dec_layers = 2,
             tau = 1.0,
+            use_ste = True
         ):
         super(MaskGenStochasticDecoder_NoCycleParam, self).__init__()
 
@@ -477,6 +478,7 @@ class MaskGenStochasticDecoder_NoCycleParam(nn.Module):
         self.max_len = max_len
         self.trend_smoother = trend_smoother
         self.tau = tau
+        self.use_ste = use_ste
 
         dec_layer = nn.TransformerDecoderLayer(d_model = d_z, **trans_dec_args) 
         self.mask_decoder = nn.TransformerDecoder(dec_layer, num_layers = n_dec_layers)
@@ -512,11 +514,14 @@ class MaskGenStochasticDecoder_NoCycleParam(nn.Module):
             total_mask_prob = total_mask.softmax(dim=-1)
             #print('total_mask_prob', total_mask_prob.shape)
 
-        total_mask_reparameterize = F.gumbel_softmax(torch.log(total_mask_prob + 1e-9), tau = self.tau, hard = True)[...,1]
+        if self.use_ste:
+            total_mask_reparameterize = F.gumbel_softmax(torch.log(total_mask_prob + 1e-9), tau = self.tau, hard = True)[...,1]
+        else:
+            total_mask_reparameterize = F.gumbel_softmax(torch.log(total_mask_prob + 1e-9), tau = self.tau, hard = False)[...,1]
 
         return total_mask_reparameterize
 
-    def forward(self, z_seq, src, times, get_tilde_mask = False):
+    def forward(self, z_seq, src, times, get_tilde_mask = False, get_agg_z = False):
 
         x = torch.cat([src, self.pos_encoder(times)], dim = -1)
 
@@ -531,9 +536,11 @@ class MaskGenStochasticDecoder_NoCycleParam(nn.Module):
             agg_z = z_pre_agg.max(dim=0)[0]
 
         if self.trend_smoother:
-            p = self.trend_net(agg_z).sigmoid() #* self.max_len
+            p = self.trend_net(agg_z) #* self.max_len
         else:
             p = torch.zeros(src.shape[1]) + 1e-9
+
+        #p = self.trend_net(agg_z) #* self.max_len
 
         # total_mask_reparameterize = self.reparameterize(total_mask)
         total_mask_reparameterize = self.reparameterize(p_time.transpose(0,1))
@@ -557,6 +564,8 @@ class MaskGenStochasticDecoder_NoCycleParam(nn.Module):
 
         if get_tilde_mask:
             return smooth_src, total_mask,  total_mask_reparameterize, total_mask_tilde, p
+        elif get_agg_z:
+            return smooth_src, total_mask,  total_mask_reparameterize, p, agg_z
         else:
             return smooth_src, total_mask, total_mask_reparameterize, p
 

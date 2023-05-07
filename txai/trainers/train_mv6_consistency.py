@@ -7,6 +7,8 @@ from txai.utils.predictors.loss_smoother_stats import exp_criterion_eval_smoothe
 from txai.utils.predictors.eval import eval_mv4
 from txai.utils.cl import in_batch_triplet_sampling
 
+from txai.utils.functional import js_divergence
+
 def train_mv6_consistency(
         model,
         optimizer,
@@ -24,10 +26,18 @@ def train_mv6_consistency(
         selection_criterion = None,
         save_path = None,
         early_stopping = True,
+        label_matching = False,
+        embedding_matching = True,
+        opt_pred_mask = False, # If true, optimizes based on clf_criterion
+        opt_pred_mask_to_full_pred = False,
     ):
     '''
     Args:
         selection_criterion: function w signature f(out, val_tuple)
+
+        if both label_matching and embedding_matching are true, then sim_criterion must be a list of length 2 
+            with [embedding_sim, label_sim] functions
+
     '''
     # TODO: Add weights and biases logging
 
@@ -60,33 +70,44 @@ def train_mv6_consistency(
 
             clf_loss = clf_criterion(out, y)
 
+            if opt_pred_mask:
+                clf_pred_loss = clf_criterion(out_dict['pred_mask'], y)
+                clf_loss += clf_pred_loss
+            elif opt_pred_mask_to_full_pred:
+                clf_pred_loss = js_divergence(out_dict['pred_mask'].softmax(dim=-1), out_dict['pred'].softmax(dim=-1))
+                clf_loss += clf_pred_loss
+
             # Can do very rough negative sampling here:
             #neg_inds = basic_negative_sampling(X, ids, dataX, num_negatives = num_negatives)
-            org_embeddings, conc_embeddings = out_dict['all_z']
-            # anchors, positives, negatives = in_batch_triplet_sampling(org_embeddings, num_triplets_per_sample = num_triplets_per_sample)
-            # c_anchor = conc_embeddings[anchors,:]
-            # c_pos = conc_embeddings[positives,:]
-            # c_neg = conc_embeddings[negatives,:]
-            sim_loss = sim_criterion(org_embeddings, conc_embeddings)
+            if sim_criterion is not None:
+                if label_matching and embedding_matching:
+                    org_embeddings, conc_embeddings = out_dict['all_z']
+                    emb_sim_loss = sim_criterion[0](org_embeddings, conc_embeddings)
 
-            #sim_loss = sim_criterion(org_embeddings, conc_embeddings)
+                    pred_org = out_dict['pred']
+                    pred_mask = out_dict['pred_mask']
+                    label_sim_loss = sim_criterion[1](pred_mask, pred_org)
+
+                    sim_loss = emb_sim_loss + label_sim_loss
+
+                elif label_matching:
+                    pred_org = out_dict['pred']
+                    pred_mask = out_dict['pred_mask']
+                    sim_loss = sim_criterion(pred_mask, pred_org)
+                elif embedding_matching:
+                    org_embeddings, conc_embeddings = out_dict['all_z']
+                    sim_loss = sim_criterion(org_embeddings, conc_embeddings)
+                else:
+                    raise ValueError('Either label_matching or embedding_matching should be true')
+            else:
+                sim_loss = torch.tensor(0.0)
 
             sim_loss = beta_sim * sim_loss
-
-            #exp_loss /= len(logits) # Normalize out with respect to number of masks in model
-
-            loss_dict = model.compute_loss(out_dict)
-            exp_loss = beta_exp * (loss_dict['mask_loss'] + loss_dict['ent_loss'] + loss_dict['p_loss'] + loss_dict['corr_loss'])
-            eloss_list = [
-                loss_dict['mask_loss'].detach().clone().item(), 
-                #loss_dict['ent_loss'].detach().clone().item(), 
-                #loss_dict['p_loss'].detach().clone().item(),
-                #loss_dict['corr_loss'].detach().clone().item()
-            ]
-
+            exp_loss = beta_exp * model.compute_loss(out_dict)
             loss = clf_loss + exp_loss + sim_loss
 
             if clip_norm:
+                #print('Clip')
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
             loss.backward()
@@ -94,7 +115,7 @@ def train_mv6_consistency(
 
             cum_sparse.append(((ste_mask).sum() / ste_mask.flatten().shape[0]).item())
             cum_clf_loss.append(clf_loss.detach().item())
-            cum_exp_loss.append([eloss_list])
+            cum_exp_loss.append([exp_loss.detach().clone().item()])
             cum_sim_loss.append(sim_loss.detach().item())
 
             # Positives and negatives for CL:
@@ -121,7 +142,7 @@ def train_mv6_consistency(
         #met = 2.0 - sim_criterion(org_embeddings, conc_embeddings)
         #met = (model.score_contrastive(org_embeddings, conc_embeddings)).mean()
         # loss_dict = model.compute_loss(out)
-        met = -1.0 * (loss_dict['mask_loss'] + loss_dict['ent_loss'] + loss_dict['p_loss'])
+        met = -1.0 * sim
 
         ste_mask = out['ste_mask']
         sparse = ste_mask.mean().item()
@@ -142,12 +163,7 @@ def train_mv6_consistency(
             print('Save at epoch {}: Metric={:.4f}'.format(epoch, met))
 
         if (epoch + 1) % 10 == 0:
-            pvals = out['p'].mean(dim=0)
-            try:
-                sstring = ['{:.4f}'.format(pvals[i].detach().clone().item()) for i in range(pvals.shape[0])]
-            except:
-                sstring = 0
             valsparse = '{:.4f}'.format(sparse)
-            print(f'Epoch {epoch + 1}, Val F1 = {f1:.4f}, Val Sparsity = {valsparse}, Stats: {sstring}')
+            print(f'Epoch {epoch + 1}, Val F1 = {f1:.4f}, Val Sparsity = {valsparse}')
 
     print(f'Best Epoch: {best_epoch + 1} \t Val F1 = {best_val_metric:.4f}')
