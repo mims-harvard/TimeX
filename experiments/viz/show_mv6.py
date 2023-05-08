@@ -5,12 +5,8 @@ import numpy as np
 from txai.vis.visualize_mv6 import vis_concepts, visualize_explanations
 
 # Models:
-from txai.models.modelv6 import Modelv6
 from txai.models.modelv6_v2 import Modelv6_v2
-from txai.models.modelv6_v2_concepts import Modelv6_v2_concepts
-#from txai.models.modelv6_v2_ptype import Modelv6_v2_ptype
-from txai.models.modelv6_v2_ptnew import Modelv6_v2_PT
-from txai.models.modelv6_v3 import Modelv6_v3
+from txai.models.bc_model import BCExplainModel
 
 from txai.utils.data import process_Synth
 from txai.utils.predictors.eval import eval_mv4
@@ -96,11 +92,7 @@ if __name__ == '__main__':
     parser.add_argument('--topk', type = int, default = None)
     parser.add_argument('--show_concepts', action = 'store_true', help = 'shows discovered concepts, if applicable')
 
-    model_v_group = parser.add_mutually_exclusive_group()
-    model_v_group.add_argument('--concept_v', action = 'store_true')
-    model_v_group.add_argument('--v2', action = 'store_true')
-    model_v_group.add_argument('--v3', action = 'store_true')
-    model_v_group.add_argument('--ptype_v', action = 'store_true')
+    parser.add_argument('--org_v', action = 'store_true')
 
     args = parser.parse_args()
 
@@ -133,16 +125,10 @@ if __name__ == '__main__':
     print('Loading model at {}'.format(args.model_path))
     sdict, config = torch.load(args.model_path)
     print('Config:\n', config)
-    if args.v2:
+    if args.org_v:
         model = Modelv6_v2(**config)
-    elif args.v3:
-        model = Modelv6_v3(**config)
-    elif args.concept_v:
-        model = Modelv6_v2_concepts(**config)
-    elif args.ptype_v:
-        model = Modelv6_v2_PT(**config)
     else:
-        model = Modelv6(**config)
+        model = BCExplainModel(**config)
     model.load_state_dict(sdict)
     model.eval()
     model.to(device)

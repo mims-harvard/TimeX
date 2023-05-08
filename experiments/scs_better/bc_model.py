@@ -6,8 +6,7 @@ from txai.utils.predictors.loss_smoother_stats import *
 from txai.trainers.train_mv6_consistency import train_mv6_consistency
 
 from txai.models.encoders.transformer_simple import TransformerMVTS
-from txai.models.modelv5 import transformer_default_args
-from txai.models.modelv6_v2 import Modelv6_v2, AblationParameters
+from txai.models.bc_model import BCExplainModel, AblationParameters, transformer_default_args
 from txai.utils.data import process_Synth
 from txai.utils.predictors.eval import eval_mv4
 from txai.synth_data.simple_spike import SpikeTrainDataset
@@ -16,6 +15,9 @@ from txai.utils.predictors.loss_cl import *
 #from txai.utils.predictors.select_models import cosine_sim
 
 from txai.utils.shapebank.v1 import gen_dataset, gen_dataset_zero
+
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
 
 '''
 Experiment 14 - alignment of label distributions
@@ -35,14 +37,9 @@ clf_criterion = Poly1CrossEntropyLoss(
     reduction = 'mean'
 )
 
-#exp_criterion = [GSATLoss_Extended(r = 0.5)]
-#exp_criterion = InterpretabilityCriterion(r = 0.5, lam = 1.0)
-
-#exp_criterion = [SizeMaskLoss(mean = False, target_val = 5), PSizeLoss(max_len = 50)]
 sim_criterion_label = LabelConsistencyLoss()
-sim_criterion_cons = ConceptConsistencyLoss()
+sim_criterion_cons = EmbedConsistencyLoss()
 
-#sim_criterion = sim_criterion_label
 sim_criterion = [sim_criterion_cons, sim_criterion_label]
 
 targs = transformer_default_args
@@ -64,7 +61,6 @@ for i in range(1, 6):
     targs['nlayers'] = 2
     targs['norm_embedding'] = False
 
-
     abl_params = AblationParameters(equal_g_gt = False,
         g_pret_equals_g = pret_copy, label_based_on_mask = True)
 
@@ -73,12 +69,11 @@ for i in range(1, 6):
         'connect': 2.0
     }
 
-    model = Modelv6_v2(
+    model = BCExplainModel(
         d_inp = 1,
         max_len = 200,
         n_classes = 4,
         n_prototypes = 2,
-        n_explanations = 1,
         gsat_r = 0.5,
         transformer_args = targs,
         ablation_parameters = abl_params,
@@ -98,7 +93,7 @@ for i in range(1, 6):
 
     optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-3, weight_decay = 0.001)
     
-    spath = 'models/v6_1e_eqpret_split={}.pt'.format(i, pret_copy, pret_equal)
+    spath = 'models/bc_split={}.pt'.format(i, pret_copy, pret_equal)
     print('saving at', spath)
 
     #model = torch.compile(model)

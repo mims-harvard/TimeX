@@ -50,6 +50,7 @@ def train_mv6_consistency(
         
         model.train()
         cum_sparse, cum_exp_loss, cum_clf_loss, cum_sim_loss = [], [], [], []
+        label_sim_list, emb_sim_list = [], []
         for X, times, y, ids in train_loader: # Need negative sampling here
 
             optimizer.zero_grad()
@@ -82,6 +83,9 @@ def train_mv6_consistency(
             if sim_criterion is not None:
                 if label_matching and embedding_matching:
                     org_embeddings, conc_embeddings = out_dict['all_z']
+                    if model.ablation_parameters.ptype_assimilation:
+                        conc_embeddings = out_dict['ptypes']
+            
                     emb_sim_loss = sim_criterion[0](org_embeddings, conc_embeddings)
 
                     pred_org = out_dict['pred']
@@ -89,6 +93,8 @@ def train_mv6_consistency(
                     label_sim_loss = sim_criterion[1](pred_mask, pred_org)
 
                     sim_loss = emb_sim_loss + label_sim_loss
+                    label_sim_list.append(label_sim_loss.detach().clone().item())
+                    emb_sim_list.append(emb_sim_loss.detach().clone().item())
 
                 elif label_matching:
                     pred_org = out_dict['pred']
@@ -96,6 +102,8 @@ def train_mv6_consistency(
                     sim_loss = sim_criterion(pred_mask, pred_org)
                 elif embedding_matching:
                     org_embeddings, conc_embeddings = out_dict['all_z']
+                    if model.ablation_parameters.ptype_assimilation:
+                        conc_embeddings = out_dict['ptypes']
                     sim_loss = sim_criterion(org_embeddings, conc_embeddings)
                 else:
                     raise ValueError('Either label_matching or embedding_matching should be true')
@@ -131,7 +139,12 @@ def train_mv6_consistency(
         exp = exp.mean(axis=0).flatten()
         sim = np.mean(cum_sim_loss)
 
-        print(f'Epoch: {epoch}: Sparsity = {sparse:.4f} \t Exp Loss = {exp} \t Clf Loss = {clf:.4f} \t CL Loss = {sim:.4f}')
+        if (len(label_sim_list) > 0) and (len(emb_sim_list) > 0):
+            sim_s = ['{:.4f}'.format(np.mean(emb_sim_list)), '{:.4f}'.format(np.mean(label_sim_list))]
+        else:
+            sim_s = f'{sim:.4f}'
+
+        print(f'Epoch: {epoch}: Sparsity = {sparse:.4f} \t Exp Loss = {exp} \t Clf Loss = {clf:.4f} \t CL Loss = {sim_s}')
 
         # Eval after every epoch
         # Call evaluation function:

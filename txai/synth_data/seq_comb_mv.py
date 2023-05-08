@@ -14,7 +14,6 @@ import torch
 from tqdm import trange, tqdm
 
 def generate_seq(T = 500, D = 15, class_num = 0):
-
     '''
     class_num must be in [0,1]
     '''
@@ -58,16 +57,22 @@ def generate_seq(T = 500, D = 15, class_num = 0):
 
     coords = []
 
-    times_chosen = []
+    prev_seq = []
 
     j = 0
     for i in imp_sensors:
         b = B[j]
         j += 1
         # Iterate over important sensors
-        seqlen = np.random.randint(low = 10, high = 20, size = 1)[0]
-        imp_time = np.random.randint(low = 0, high = seqlen, size = 1)[0]
-        amp = np.random.poisson(lam = 10, size = 1)[0]
+        seqlen = np.random.randint(low = 15, high = 30, size = 1)[0]
+        if len(prev_seq) > 0:
+            psl, pts = prev_seq[0]
+            imp_time = np.random.randint(low = psl + pts, high = T - seqlen)
+        else:
+            imp_time = np.random.randint(low = 0, high = T // 2, size = 1)[0]
+        amp = np.random.poisson(lam = 5, size = 1)[0]
+
+        prev_seq.append((seqlen, imp_time))
 
         # Decide slope (y_2 - y_1) / (x_2, x_1):
         x_1, x_2 = -(seqlen // 2), ((seqlen // 2) + seqlen % 2)
@@ -204,9 +209,9 @@ def print_tuple(t):
 
 if __name__ == '__main__':
 
-    for i in range(5):
+    for i in [3]:
         print(f'Split {i + 1} ' + '-' * 20)
-        train_dataset, val, test, gt_exps = get_all_spike_loaders(Ntrain=5000, Nval=100, Ntest=1000, T = 50, D = 1)
+        train_dataset, val, test, gt_exps = get_all_spike_loaders(Ntrain=5000, Nval=100, Ntest=1000, T = 200, D = 4)
 
         dataset = {
             'train_loader': train_dataset,
@@ -216,7 +221,7 @@ if __name__ == '__main__':
         }
 
         base = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets'
-        torch.save(dataset, base + '/SeqCombSingle/split={}.pt'.format(i + 1))
+        torch.save(dataset, base + '/SeqCombMV/split={}.pt'.format(i + 1))
         
         print('Val ' + '-'*20)
         print_tuple(val)

@@ -36,7 +36,7 @@ clf_criterion = Poly1CrossEntropyLoss(
 
 #exp_criterion = [SizeMaskLoss(mean = False, target_val = 5), PSizeLoss(max_len = 50)]
 sim_criterion_label = LabelConsistencyLoss()
-sim_criterion_cons = ConceptConsistencyLoss()
+sim_criterion_cons = EmbedConsistencyLoss()
 
 sim_criterion = [sim_criterion_cons, sim_criterion_label]
 

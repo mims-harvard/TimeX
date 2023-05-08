@@ -12,7 +12,7 @@ from txai.utils.data import process_Synth
 from txai.utils.predictors.eval import eval_mv4
 from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.data.datasets import DatasetwInds
-from txai.utils.predictors.loss_cl import SimCLRLoss, ConceptTopologyLoss, GeneralScoreContrastiveLoss, ConceptConsistencyLoss
+from txai.utils.predictors.loss_cl import SimCLRLoss, ConceptTopologyLoss, GeneralScoreContrastiveLoss, EmbedConsistencyLoss
 #from txai.utils.predictors.select_models import cosine_sim
 
 from txai.utils.shapebank.v1 import gen_dataset, gen_dataset_zero
@@ -40,7 +40,7 @@ clf_criterion = Poly1CrossEntropyLoss(
 #exp_criterion = InterpretabilityCriterion(r = 0.5, lam = 1.0)
 
 #exp_criterion = [SizeMaskLoss(mean = False, target_val = 5), PSizeLoss(max_len = 50)]
-sim_criterion = ConceptConsistencyLoss()
+sim_criterion = EmbedConsistencyLoss()
 
 targs = transformer_default_args
 

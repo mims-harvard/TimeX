@@ -6,11 +6,8 @@ import numpy as np
 from txai.vis.visualize_mv6 import vis_concepts, visualize_explanations
 
 # Models:
-from txai.models.modelv6 import Modelv6
+from txai.models.bc_model import BCExplainModel
 from txai.models.modelv6_v2 import Modelv6_v2
-from txai.models.modelv6_v2_concepts import Modelv6_v2_concepts
-from txai.models.modelv6_v2_ptnew import Modelv6_v2_PT
-from txai.models.modelv6_v3 import Modelv6_v3
 
 from txai.utils.data import process_Synth
 from txai.utils.predictors.eval import eval_mv4
@@ -164,6 +161,9 @@ def main_sim(model, train, test, args):
     else:
         to_choose = torch.arange(Xtest.shape[0])
 
+    # Seed:
+    torch.manual_seed(args.sample_seed)
+    torch.cuda.manual_seed(args.sample_seed)
     q_inds = to_choose[torch.randperm(to_choose.shape[0])[:3]]
 
     zq = ztest[q_inds,:]
@@ -207,6 +207,10 @@ def main_sim_other_exp(args, train, test):
     else:
         to_choose = torch.arange(Xtest.shape[0])
 
+    # Seed:
+    torch.manual_seed(args.sample_seed)
+    torch.cuda.manual_seed(args.sample_seed)
+
     q_inds = to_choose[torch.randperm(to_choose.shape[0])[:3]]
 
     # Get embeddings of sampled:
@@ -231,9 +235,10 @@ def main_sim_other_exp(args, train, test):
             ts = times_train[:,ind].clone().unsqueeze(1)
             ys = y_train[ind].unsqueeze(0).clone()
             if args.exp_method == 'dyna':
-                exp = explainer(model, Xs, ts, y = ys)
+                exp = explainer(model, Xs, ts, y = ys).transpose(0,1)
             else:
                 exp = explainer(model, Xs.unsqueeze(1), ts, y = ys)
+                exp = exp[:,:,0]
             exp_i.append(exp)
 
         all_exps.append(exp_i)
@@ -246,9 +251,10 @@ def main_sim_other_exp(args, train, test):
         ts = times_test[:,i].clone().unsqueeze(1)
         ys = y_test[i].clone()
         if args.exp_method == 'dyna':
-            exp = explainer(model, Xs, ts, y = ys.unsqueeze(0))
+            exp = explainer(model, Xs, ts, y = ys.unsqueeze(0)).transpose(0,1)
         else:
             exp = explainer(model, Xs.unsqueeze(1), ts, y = ys)
+            exp = exp[:,:,0]
         all_test_exps.append(exp)
 
     # Visualize:
@@ -257,11 +263,11 @@ def main_sim_other_exp(args, train, test):
     for i in range(3):
         
         ti = q_inds[i]
-        vis_one_saliency_univariate(Xtest[:,ti,:], all_test_exps[i][:,:,0], ax[0,i], fig)
+        vis_one_saliency_univariate(Xtest[:,ti,:], all_test_exps[i], ax[0,i], fig)
 
         for j in range(args.nclose):
             ind = best_sim_inds[i,j]
-            vis_one_saliency_univariate(Xtrain[:,ind,:], all_exps[i][j][:,:,0], ax[(j+1),i], fig)
+            vis_one_saliency_univariate(Xtrain[:,ind,:], all_exps[i][j], ax[(j+1),i], fig)
     
     plt.show()
 
@@ -275,6 +281,8 @@ if __name__ == '__main__':
     parser.add_argument('--save_path', type = str, default = None)
     parser.add_argument('--class_num', type = int, default = None)
     parser.add_argument('--nclose', type = int, default = 4)
+    parser.add_argument('--org_v', action = 'store_true')
+    parser.add_argument('--sample_seed', type = int, default = None)
 
     args = parser.parse_args()
 
@@ -317,7 +325,10 @@ if __name__ == '__main__':
     if args.exp_method == 'ours':
         sdict, config = torch.load(args.model_path)
         print('Config:\n', config)
-        model = Modelv6_v2(**config)
+        if args.org_v:
+            model = Modelv6_v2(**config)
+        else:
+            model = BCExplainModel(**config)
         model.load_state_dict(sdict)
         model.eval()
         model.to(device)

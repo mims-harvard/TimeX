@@ -5,3 +5,4 @@ txai.egg-info
 *.png
 *.pkl
 .vscode
+.ipynb_checkpoints

@@ -7,7 +7,7 @@ from txai.models.encoders.transformer_simple import TransformerMVTS
 from txai.smoother import smoother
 from txai.utils.functional import transform_to_attn_mask
 from txai.models.modelv2 import MaskGenStochasticDecoder_NoCycleParam
-from txai.models.mask_generators.window_mask import MaskGenWindow
+#from txai.models.mask_generators.window_mask import MaskGenWindow
 
 from txai.utils.predictors.loss import GSATLoss, ConnectLoss
 from txai.utils.predictors.loss_smoother_stats import *

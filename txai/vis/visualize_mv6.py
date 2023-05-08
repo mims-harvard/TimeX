@@ -1,9 +1,13 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from txai.vis.visualize_cbm1 import get_x_mask_borders
 from txai.models.modelv6_v2 import Modelv6_v2
-from txai.models.modelv6_v2_concepts import Modelv6_v2_concepts
+
+def get_x_mask_borders(mask):
+    nz = mask.nonzero(as_tuple=True)[0].tolist()
+    # Get contiguous:
+    nz_inds = [(nz[i], nz[i+1]) for i in range(len(nz) - 1) if (nz[i] == (nz[i+1] - 1))]
+    return nz_inds
 
 def plot_heatmap(mask_logits, smooth_src, ax, fig):
     x_range = torch.arange(smooth_src.shape[0])
@@ -105,7 +109,7 @@ def visualize_explanations(model, test_tup, n = 3, class_num = None, show = True
     np.random.seed(seed)
     inds = torch.from_numpy(np.random.choice(choices, size = (n,), replace = False)).long()
     #if isinstance(model, Modelv6_v2) or isinstance(model, Modelv6_v2_concepts):
-    num_on_x = (1 + model.n_explanations)
+    num_on_x = (2)
     # else:
     #     num_on_x = 1 + model.n_concepts
     fig, ax = plt.subplots(num_on_x, n, sharex = True)
@@ -126,7 +130,8 @@ def visualize_explanations(model, test_tup, n = 3, class_num = None, show = True
     aggregate_mask_discrete = logical_or_mask_along_explanations(masks)
     aggregate_mask_continuous = mask_logits.sum(-1)
 
-    smooth_src = torch.stack(out['smooth_src'], dim = 0) # Shape (N_c, T, B, d)
+    #smooth_src = torch.stack(out['smooth_src'], dim = 0) # Shape (N_c, T, B, d)
+    smooth_src = out['smooth_src'].unsqueeze(0)
 
     pred = pred.softmax(dim=1).argmax(dim=1)
     pred_mask = pred_mask.softmax(dim=1).argmax(dim=1)

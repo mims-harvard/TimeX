@@ -1,15 +1,13 @@
 import torch
+import torch.nn.functional as F
 import argparse
 import numpy as np
 
 from txai.vis.visualize_mv6 import vis_concepts, visualize_explanations
 
 # Models:
-from txai.models.modelv6 import Modelv6
 from txai.models.modelv6_v2 import Modelv6_v2
-from txai.models.modelv6_v2_concepts import Modelv6_v2_concepts
-from txai.models.modelv6_v2_ptnew import Modelv6_v2_PT
-from txai.models.modelv6_v3 import Modelv6_v3
+from txai.models.bc_model import BCExplainModel
 
 from txai.utils.data import process_Synth
 from txai.utils.predictors.eval import eval_mv4
@@ -25,6 +23,10 @@ from umap import UMAP
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def main(model, test, args):
+    need_ptypes = False
+    if isinstance(model, BCExplainModel):
+        if model.ablation_parameters.ptype_assimilation:
+            need_ptypes = True
 
     X, times, y = test
 
@@ -36,14 +38,22 @@ def main(model, test, args):
     # Load test embeddings:
     out = model(X, times)
 
-    z_test_org = out['z_mask_list']
-    z_test = z_test_org.transpose(1, 2).flatten(0, 1) # Shape (B, d_z, ne) -> (B x ne, d_z)
+    #z_test_org = out['z_mask_list']
+    #z_test = z_test_org.transpose(1, 2).flatten(0, 1) # Shape (B, d_z, ne) -> (B x ne, d_z)
+    z_test = F.normalize(out['z_mask_list'], dim = -1)
     z_test_np = z_test.detach().cpu().numpy()
+
+    if need_ptypes:
+        # Get prototypes too:
+        ptype_z_np = F.normalize(model.prototypes, dim = -1).detach().cpu().numpy()
+        to_fit_z = np.concatenate([z_test_np, ptype_z_np], axis = 0)
+    else:
+        to_fit_z = z_test_np
 
     m = UMAP()
 
     # Fit UMAP reducer:
-    m.fit(z_test_np)
+    m.fit(to_fit_z)
 
     # Start plotting: ---------------------
     plt.figure(dpi=200)
@@ -52,13 +62,20 @@ def main(model, test, args):
     #y_np = y.detach().cpu().numpy()
     for yi in y.unique():
         yitem = yi.item()
-        zt_i = z_test_org[y == yi,:,:].transpose(1,2).flatten(0,1).detach().cpu().numpy()
+        #zt_i = z_test_org[y == yi,:,:].transpose(1,2).flatten(0,1).detach().cpu().numpy()
+        zt_i = z_test[y==yi,:].detach().cpu().numpy()
 
         zt_umap = m.transform(zt_i)
 
         plt.scatter(zt_umap[:,0], zt_umap[:,1], label = 'Class {:d}'.format(yitem), alpha = 0.5)
 
     plt.legend()
+
+    # Show prototypes if needed
+    if need_ptypes:
+        pz_umap = m.transform(ptype_z_np)
+        plt.scatter(pz_umap[:,0], pz_umap[:,1], alpha = 1.0, c = np.arange(pz_umap.shape[0]), cmap = 'cool')
+
     plt.show()
 
 def eval_model(model, test):
@@ -78,6 +95,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type=str)
     parser.add_argument('--dataset', type = str)
     parser.add_argument('--split_no', type=int, default = 1)
+    parser.add_argument('--org_v', action = 'store_true')
 
     args = parser.parse_args()
 
@@ -112,7 +130,10 @@ if __name__ == '__main__':
     print('Config:\n', config)
 
     # Prototype:
-    model = Modelv6_v2(**config)
+    if args.org_v:
+        model = Modelv6_v2(**config)
+    else:
+        model = BCExplainModel(**config)
     model.load_state_dict(sdict)
     model.eval()
     model.to(device)

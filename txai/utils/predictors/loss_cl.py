@@ -113,9 +113,9 @@ class ConceptTopologyLoss(torch.nn.Module):
 
         return scores.mean()
 
-class ConceptConsistencyLoss(torch.nn.Module):
+class EmbedConsistencyLoss(torch.nn.Module):
     def __init__(self, normalize_distance = False):
-        super(ConceptConsistencyLoss, self).__init__()
+        super(EmbedConsistencyLoss, self).__init__()
         self.normalize_distance = normalize_distance
 
     def forward(self, original_embeddings, concept_embeddings):
@@ -139,7 +139,7 @@ class SimCLRwConsistencyLoss(torch.nn.Module):
         super(SimCLRwConsistencyLoss, self).__init__()
         self.lam = lam
         self.simclr_loss = SimCLRLoss(temperature = temperature)
-        self.con_loss = ConceptConsistencyLoss()
+        self.con_loss = EmbedConsistencyLoss()
     def forward(self, embeddings, positives, negatives):
         sclr = self.simclr_loss(embeddings, positives, negatives)
         con = self.con_loss(positives, embeddings)

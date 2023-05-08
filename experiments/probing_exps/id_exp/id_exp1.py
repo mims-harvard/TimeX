@@ -40,7 +40,7 @@ clf_criterion = Poly1CrossEntropyLoss(
 
 #exp_criterion = [SizeMaskLoss(mean = False, target_val = 5), PSizeLoss(max_len = 50)]
 #sim_criterion = LabelSimLoss()
-sim_criterion = ConceptConsistencyLoss()
+sim_criterion = EmbedConsistencyLoss()
 
 targs = transformer_default_args
 

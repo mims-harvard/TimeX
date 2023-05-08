@@ -74,7 +74,7 @@ def get_concepts():
 
 
 sim_criterion_label = LabelConsistencyLoss()
-sim_criterion_cons = ConceptConsistencyLoss()
+sim_criterion_cons = EmbedConsistencyLoss()
 
 sim_criterion = [sim_criterion_cons, sim_criterion_label]
 

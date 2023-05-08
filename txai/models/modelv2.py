@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 from txai.models.encoders.transformer_simple import TransformerMVTS
 from txai.smoother import smoother, exponential_smoother
-from txai.models.mask_generators.gumbelmask_model import STENegInf
+#from txai.models.mask_generators.gumbelmask_model import STENegInf
 from txai.utils.functional import transform_to_attn_mask
 from txai.models.encoders.positional_enc import PositionalEncodingTF
 
@@ -34,6 +34,19 @@ class STENegInfMod(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         return grad_output
+
+class STENegInf(torch.autograd.Function):
+    # From: https://www.hassanaskary.com/python/pytorch/deep%20learning/2020/09/19/intuitive-explanation-of-straight-through-estimators.html
+    @staticmethod
+    def forward(ctx, input):
+        mfill = torch.zeros_like(input).masked_fill(input < 0.5, -1e9).to(device)
+        # Collapse down to sequence-level:
+        mfill = mfill.sum(-1)
+        return mfill
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return torch.nn.functional.hardtanh(grad_output.unsqueeze(-1).expand(-1, -1, 4))
 
 class CycleTrendGenerator(nn.Module):
     def __init__(self, 

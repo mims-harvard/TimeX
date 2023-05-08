@@ -14,7 +14,7 @@ from txai.utils.data import process_Synth
 from txai.utils.predictors.eval import eval_mv4
 from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.data.datasets import DatasetwInds
-from txai.utils.predictors.loss_cl import SimCLRLoss, ConceptTopologyLoss, GeneralScoreContrastiveLoss, ConceptConsistencyLoss
+from txai.utils.predictors.loss_cl import SimCLRLoss, ConceptTopologyLoss, GeneralScoreContrastiveLoss, EmbedConsistencyLoss
 from txai.utils.concepts import PreChosenConceptList 
 #from txai.utils.predictors.select_models import cosine_sim
 

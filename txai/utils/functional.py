@@ -26,7 +26,7 @@ def transform_to_attn_mask(linear_mask):
     if len(linear_mask.shape) > 2:
         # If multivariate mask, convert to univariate:
         # Needs to be differentiable
-        linear_mask = F.hardtanh(linear_mask.sum(dim=-1)).transpose(0, 1) # Hard tanh sends anything >= 1 to 1, stil differentiable
+        linear_mask = F.hardtanh(linear_mask.sum(dim=-1)) # Hard tanh sends anything >= 1 to 1, stil differentiable
         # 0's stay as 0's
 
     attn_mask = linear_mask.unsqueeze(-1).repeat(1, 1, linear_mask.shape[1])
@@ -38,7 +38,7 @@ def js_divergence(p: Tensor, q: Tensor) -> Tensor:
     # Assumes both have alread
     # Implementation borrowed from: https://kornia.readthedocs.io/en/latest/_modules/kornia/losses/divergence.html
     m = 0.5 * (p + q)
-    return (0.5 * F.kl_div(p.log(), m) + 0.5 * F.kl_div(q.log(), m))
+    return (0.5 * F.kl_div(p.log(), m, reduction = 'mean') + 0.5 * F.kl_div(q.log(), m, reduction = 'mean'))
 
 def cosine_sim_matrix(z1, z2):
     # Shape: (B1, d_z), (B2, d_z)
