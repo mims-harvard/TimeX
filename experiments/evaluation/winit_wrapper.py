@@ -137,6 +137,8 @@ def train_generator(args):
         D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombSingleBetter')
     elif Dname == 'freqshapeud':
         D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'FreqShapeUD')
+    elif Dname == 'seqcomb_mv':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombMV')
     
     winit_path = Path(args.models_path) / f"winit_split={args.split_no}/"
 
