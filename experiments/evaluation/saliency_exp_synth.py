@@ -117,15 +117,6 @@ def main(args):
         gt_exps = D['gt_exps']
     T, B, d = X.shape
 
-    if True:
-        # take only 50 samples (for testing)
-        X = X[:, :50]
-        y = y[:50]
-        times = times[:, :50]
-        gt_exps = gt_exps[:, :50]
-        B = 50
-
-
     if args.exp_method == 'ours':
         sdict, config = torch.load(args.model_path)
         if args.org_v:
