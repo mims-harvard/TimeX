@@ -50,7 +50,7 @@ def main(model, test, args):
     else:
         to_fit_z = z_test_np
 
-    m = UMAP()
+    m = UMAP(metric = 'cosine')
 
     # Fit UMAP reducer:
     m.fit(to_fit_z)
@@ -74,7 +74,7 @@ def main(model, test, args):
     # Show prototypes if needed
     if need_ptypes:
         pz_umap = m.transform(ptype_z_np)
-        plt.scatter(pz_umap[:,0], pz_umap[:,1], alpha = 1.0, c = np.arange(pz_umap.shape[0]), cmap = 'cool')
+        plt.scatter(pz_umap[:,0], pz_umap[:,1], alpha = 1.0, c = np.arange(pz_umap.shape[0]), cmap = 'viridis', marker = 's')
 
     plt.show()
 

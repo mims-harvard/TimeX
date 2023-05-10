@@ -8,6 +8,7 @@ from sklearn.metrics import roc_auc_score, f1_score, mean_absolute_error
 sys.path.append(os.path.dirname(__file__))
 
 from txai.utils.predictors.loss import Poly1CrossEntropyLoss
+from txai.models.run_model_utils import batch_forwards_TransformerMVTS
 
 default_scheduler_args = {
     'mode': 'max', 
@@ -140,10 +141,11 @@ def train(
         model.eval()
         with torch.no_grad():
             X, times, y = val_tuple
-            if validate_by_step:
-                pred = torch.empty((X.shape[1], n_classes)).to(y.get_device())
-                for i in range(X.shape[1]):
-                    pred[i,:] = model(X[:,i,:], times[:,i].unsqueeze(-1), show_sizes = show_sizes)
+            if validate_by_step is not None:
+                pred, _ = batch_forwards_TransformerMVTS(model, X, times, batch_size = validate_by_step)
+                # pred = torch.empty((X.shape[1], n_classes)).to(y.get_device())
+                # for i in range(X.shape[1]):
+                #     pred[i,:] = model(X[:,i,:], times[:,i].unsqueeze(-1), show_sizes = show_sizes)
             else:
                 pred = model(X, times, show_sizes = show_sizes)
             val_loss = criterion(pred, y)

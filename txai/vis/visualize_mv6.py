@@ -56,6 +56,40 @@ def vis_prototypes(model, test_tup, show = True, k = 3):
     if show:
         plt.show()
 
+def vis_sim_to_ptypes(X_nearby_list, mask_nearby_list, y_nearby_list = None, show = True):
+
+    Nq = len(X_nearby_list)
+
+    #plt.figure(dpi=200)
+    fig, ax = plt.subplots(X_nearby_list[0].shape[1], Nq, sharex = True, dpi = 200)
+
+    xr = np.arange(X_nearby_list[0].shape[0])
+
+    for i in range(Nq):
+
+        Xq_ref = X_nearby_list[i]
+        mask_ref = mask_nearby_list[i]
+        if y_nearby_list is not None:
+            y_ref = y_nearby_list[i]
+
+        if y_nearby_list is not None:
+            ax[0,i].set_title('Example {}, label = {}'.format(i, y_ref[0]))
+        else:
+            ax[0,i].set_title('Example {}'.format(i))
+
+        for j in range(Xq_ref.shape[1]):
+            mq_ij = np.expand_dims(mask_ref[j,:], axis = 1)
+            print('mq', mq_ij.shape)
+
+            ax[j,i].plot(xr, Xq_ref[:,j,:], color = 'black')
+            if y_nearby_list is not None:
+                ax[j,i].set_title(f'label = {y_ref[j]}', fontdict = {'fontsize':10})
+            plot_heatmap(mq_ij, Xq_ref[:,j,:], ax = ax[j,i], fig = fig)
+
+    if show:
+        plt.tight_layout(pad=0.3)
+        plt.show()
+
 def vis_exps_w_sim(X_query, mask_query, X_nearby_list, mask_nearby_list, show = True):
 
     Nq = X_query.shape[1]

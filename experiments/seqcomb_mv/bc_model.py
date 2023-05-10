@@ -12,7 +12,7 @@ from txai.utils.predictors.eval import eval_mv4
 from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.data.datasets import DatasetwInds
 from txai.utils.predictors.loss_cl import *
-#from txai.utils.predictors.select_models import cosine_sim
+from txai.utils.predictors.select_models import simloss_on_val_wboth
 
 from txai.utils.shapebank.v1 import gen_dataset, gen_dataset_zero
 
@@ -20,10 +20,10 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 pret_copy = False
-pret_equal = False
+pret_equal = True
 print('Running variation pret_copy = {}, pret_equal = {}'.format(pret_copy, pret_equal))
 
-tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/seqcomb_mv/models/transformer_split={}.pt"
+tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/seqcomb_mv/formal_models/transformer_split={}.pt"
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -34,14 +34,16 @@ clf_criterion = Poly1CrossEntropyLoss(
     reduction = 'mean'
 )
 
-sim_criterion_label = LabelConsistencyLoss()
+#sim_criterion_label = LabelConsistencyLoss()
+sim_criterion_label = LabelAlignmentLoss()
 sim_criterion_cons = EmbedConsistencyLoss()
 
 sim_criterion = [sim_criterion_cons, sim_criterion_label]
+selection_criterion = simloss_on_val_wboth(sim_criterion, lam = 1.0)
 
 targs = transformer_default_args
 
-for i in range(1, 6):
+for i in range(1,6):
     D = process_Synth(split_no = i, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombMV')
     dset = DatasetwInds(D['train_loader'].X.to(device), D['train_loader'].times.to(device), D['train_loader'].y.to(device))
     train_loader = torch.utils.data.DataLoader(dset, batch_size = 64, shuffle = True)
@@ -58,8 +60,13 @@ for i in range(1, 6):
     targs['nlayers'] = 2
     targs['norm_embedding'] = False
 
-    abl_params = AblationParameters(equal_g_gt = False,
-        g_pret_equals_g = pret_copy, label_based_on_mask = True)
+    abl_params = AblationParameters(
+        equal_g_gt = False,
+        g_pret_equals_g = pret_equal, 
+        label_based_on_mask = True,
+        ptype_assimilation = True,
+        side_assimilation = True,
+    )
 
     loss_weight_dict = {
         'gsat': 1.0,
@@ -70,7 +77,7 @@ for i in range(1, 6):
         d_inp = 4,
         max_len = 200,
         n_classes = 4,
-        n_prototypes = 2,
+        n_prototypes = 50,
         gsat_r = 0.5,
         transformer_args = targs,
         ablation_parameters = abl_params,
@@ -83,15 +90,12 @@ for i in range(1, 6):
 
     model.encoder_t.load_state_dict(torch.load(tencoder_path.format(i)))
 
-    if pret_copy:
-        model.encoder_pret.load_state_dict(torch.load(tencoder_path.format(i)))
-
     for param in model.encoder_main.parameters():
         param.requires_grad = False
 
     optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-3, weight_decay = 0.001)
     
-    spath = 'models/bc_stronger_split={}.pt'.format(i, pret_copy, pret_equal)
+    spath = 'models/bc_pret_eq_split={}.pt'.format(i)
     print('saving at', spath)
 
     #model = torch.compile(model)
@@ -109,8 +113,8 @@ for i in range(1, 6):
         num_epochs = 100,
         save_path = spath,
         train_tuple = (D['train_loader'].X, D['train_loader'].times, D['train_loader'].y),
-        early_stopping = False,
-        selection_criterion = None,
+        early_stopping = True,
+        selection_criterion = selection_criterion,
         label_matching = True,
         embedding_matching = True
     )
@@ -123,4 +127,4 @@ for i in range(1, 6):
 
     f1, _ = eval_mv4(test, model)
     print('Test F1: {:.4f}'.format(f1))
-    exit()
+    #exit()

@@ -15,7 +15,7 @@ from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.predictors.select_models import cosine_sim 
 from txai.utils.cl_metrics import sim_mat
 from txai.utils.data.preprocess import process_Epilepsy, process_MITECG
-from txai.vis.visualize_mv6 import vis_exps_w_sim
+from txai.vis.visualize_mv6 import vis_exps_w_sim, vis_sim_to_ptypes
 from txai.vis.vis_saliency import vis_one_saliency_univariate
 from txai.models.encoders.transformer_simple import TransformerMVTS
 from txai.utils.experimental import get_explainer
@@ -24,7 +24,7 @@ from txai.utils.experimental import get_explainer
 import matplotlib.pyplot as plt
 from umap import UMAP
 
-from txai.prototypes.posthoc import find_kmeans_ptypes, find_nearest_explanations
+from txai.prototypes.posthoc import find_kmeans_ptypes, find_nearest_explanations, filter_prototypes
 from txai.models.run_model_utils import batch_forwards, batch_forwards_TransformerMVTS
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -147,28 +147,69 @@ def main_clusters(model, train, test, args):
 @torch.no_grad()
 def main_sim(model, train, test, args):
     Xtrain, times_train, y_train = train
-    out_train = batch_forwards(model, Xtrain, times_train, batch_size = 64)
+    out_train = batch_forwards(model, Xtrain, times_train, batch_size = 64, org_v = args.org_v)
 
     Xtest, times_test, y_test = test
-    out_test = batch_forwards(model, Xtest, times_test, batch_size = 64)
+    out_test = batch_forwards(model, Xtest, times_test, batch_size = 64, org_v = args.org_v)
 
     ztrain = out_train['z_mask_list'].squeeze(-1)
     ztest = out_test['z_mask_list'].squeeze(-1)
 
+    pred_model = out_train['pred'].softmax(dim=-1).argmax(dim=-1)
+
     # Choose random exps:
-    if args.class_num is not None:
-        to_choose = (y_test == args.class_num).nonzero(as_tuple=True)[0].cpu()
+    if args.get_ptypes:
+        to_choose = torch.arange(model.n_prototypes)
     else:
-        to_choose = torch.arange(Xtest.shape[0])
+        if args.class_num is not None:
+            to_choose = (y_test == args.class_num).nonzero(as_tuple=True)[0].cpu()
+        else:
+            to_choose = torch.arange(Xtest.shape[0])
 
-    # Seed:
-    torch.manual_seed(args.sample_seed)
-    torch.cuda.manual_seed(args.sample_seed)
-    q_inds = to_choose[torch.randperm(to_choose.shape[0])[:3]]
+    if args.get_ptypes:
+        # First filter prototypes:
+        choices, cdist = filter_prototypes(model.prototypes.cpu(), ztrain, lower_bound = 5, get_count_dist = True)
 
-    zq = ztest[q_inds,:]
+        print('Number of chosen prototypes {}'.format(choices.shape[0]))
+    
+        plt.bar(np.arange(model.prototypes.shape[0]), cdist.detach().cpu().numpy())
+        plt.title('Prototypes with one point nearest')
+        plt.show()
 
+        if args.sample_seed is not None:
+            torch.manual_seed(args.sample_seed)
+            torch.cuda.manual_seed(args.sample_seed)
+
+        
+        if args.gettop:
+            q_inds = cdist.argsort(descending=True)[:5]
+            zq = model.prototypes.cpu()
+            zq = zq[q_inds,:]
+        else:  
+            zq = model.prototypes[choices,:].cpu()
+            if zq.shape[0] > 3:
+                q_inds = torch.arange(zq.shape[0])[torch.randperm(zq.shape[0])[:3]]
+                zq = zq[q_inds,:]
+
+        #zq = model.prototypes[q_inds,:].cpu()
+
+    else:
+        if args.sample_seed is not None:
+            torch.manual_seed(args.sample_seed)
+            torch.cuda.manual_seed(args.sample_seed)
+        q_inds = to_choose[torch.randperm(to_choose.shape[0])[:3]]
+        zq = ztest[q_inds,:]
+
+    print('zq', zq.device)
+    print('ztrain', ztrain.device)
+
+    # if args.exp_method == 'random_choice':
+    #     pass
+    # else:
     best_per_q = find_nearest_explanations(zq, ztrain, n_exps_per_q = args.nclose)
+
+    if args.random:
+        best_per_q = torch.randint_like(best_per_q, low = 0, high = ztrain.shape[0])
 
     print('best_per_q', best_per_q)
 
@@ -179,15 +220,21 @@ def main_sim(model, train, test, args):
     mtrain = out_train['mask_logits'][:,:,0].detach().cpu().numpy()
 
     # Build lists:
-    Xn_list, mn_list = [], []
+    Xn_list, mn_list, yn_list = [], [], []
     for i in range(best_per_q.shape[0]):
         ind = best_per_q[i,:]
         Xn_list.append(Xtrain[:,ind,:].detach().clone().cpu().numpy())
         mn_list.append(mtrain[ind,:])
+        yt_sub = pred_model[ind].detach().clone().cpu()
+        yn_list.append([yi.item() for yi in yt_sub])
 
-    vis_exps_w_sim(X_query = Xq, mask_query = mq, 
-        X_nearby_list = Xn_list, mask_nearby_list = mn_list,
-        show = True)
+    if args.get_ptypes:
+        vis_sim_to_ptypes(X_nearby_list = Xn_list, mask_nearby_list = mn_list,
+            y_nearby_list = yn_list, show = True)
+    else:
+        vis_exps_w_sim(X_query = Xq, mask_query = mq, 
+            X_nearby_list = Xn_list, mask_nearby_list = mn_list,
+            show = True)
 
 def main_sim_other_exp(args, train, test):
     
@@ -208,8 +255,9 @@ def main_sim_other_exp(args, train, test):
         to_choose = torch.arange(Xtest.shape[0])
 
     # Seed:
-    torch.manual_seed(args.sample_seed)
-    torch.cuda.manual_seed(args.sample_seed)
+    if args.sample_seed is not None:
+        torch.manual_seed(args.sample_seed)
+        torch.cuda.manual_seed(args.sample_seed)
 
     q_inds = to_choose[torch.randperm(to_choose.shape[0])[:3]]
 
@@ -268,6 +316,7 @@ def main_sim_other_exp(args, train, test):
         for j in range(args.nclose):
             ind = best_sim_inds[i,j]
             vis_one_saliency_univariate(Xtrain[:,ind,:], all_exps[i][j], ax[(j+1),i], fig)
+            ax[(j+1),i].set_title('label = {:d}'.format(ytrain[ind].item()), fontdict = {'fontsize':12})
     
     plt.show()
 
@@ -283,6 +332,9 @@ if __name__ == '__main__':
     parser.add_argument('--nclose', type = int, default = 4)
     parser.add_argument('--org_v', action = 'store_true')
     parser.add_argument('--sample_seed', type = int, default = None)
+    parser.add_argument('--get_ptypes', action = 'store_true')
+    parser.add_argument('--random', action = 'store_true', help = 'Picks random samples to visualize')
+    parser.add_argument('--gettop', action = 'store_true')
 
     args = parser.parse_args()
 

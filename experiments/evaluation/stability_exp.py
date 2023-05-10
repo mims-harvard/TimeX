@@ -87,20 +87,14 @@ def main(args):
     Dname = args.dataset.lower()
 
     # Switch on loading test data:
-    if Dname == 'freqshape':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'FreqShape')
-    elif Dname == 'seqcombsingle':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombSingle')
-    elif Dname == 'scs_better':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombSingleBetter')
-    elif Dname == 'seqcomb_mv':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombMV')
-    elif Dname == 'freqshapeud':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/FreqShapeUD')
-    elif Dname == 'scs_inline':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleInline')
-    elif Dname == 'scs_fixone':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleFixOne')
+    if Dname == 'epilepsy':
+        pass
+    elif Dname == 'pam':
+        pass
+    elif Dname == 'boiler':
+        pass
+    else:
+        raise ValueError('{} is not a valid dataset for stability'.format(Dname))
     
     test = D['test']
 

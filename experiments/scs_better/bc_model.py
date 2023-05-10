@@ -37,7 +37,8 @@ clf_criterion = Poly1CrossEntropyLoss(
     reduction = 'mean'
 )
 
-sim_criterion_label = LabelConsistencyLoss()
+#sim_criterion_label = LabelConsistencyLoss()
+sim_criterion_label = LabelAlignmentLoss()
 sim_criterion_cons = EmbedConsistencyLoss()
 
 sim_criterion = [sim_criterion_cons, sim_criterion_label]
@@ -62,7 +63,7 @@ for i in range(1, 6):
     targs['norm_embedding'] = False
 
     abl_params = AblationParameters(equal_g_gt = False,
-        g_pret_equals_g = pret_copy, label_based_on_mask = True)
+        g_pret_equals_g = pret_equal, label_based_on_mask = True)
 
     loss_weight_dict = {
         'gsat': 1.0,
@@ -93,7 +94,7 @@ for i in range(1, 6):
 
     optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-3, weight_decay = 0.001)
     
-    spath = 'models/bc_split={}.pt'.format(i, pret_copy, pret_equal)
+    spath = 'models/bc_labelalign_split={}.pt'.format(i, pret_copy, pret_equal)
     print('saving at', spath)
 
     #model = torch.compile(model)
