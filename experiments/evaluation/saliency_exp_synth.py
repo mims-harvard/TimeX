@@ -1,3 +1,4 @@
+import re
 import argparse
 from pathlib import Path
 import torch
@@ -213,26 +214,24 @@ def main(args):
         print('\t{} \t = {:.4f} +- {:.4f}'.format(k, np.mean(v), np.std(v) / np.sqrt(len(v))))
 
     return results_dict
-
+    
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp_method', type = str, help = "Options: ['ig', 'dyna', 'winit', 'ours']")
     parser.add_argument('--dataset', type = str)
-    parser.add_argument('--split_no', default = 1, type = int)
+    parser.add_argument('--split_no', default = 1, type=int)
     parser.add_argument('--model_path', type = str, help = 'only time series transformer right now')
     parser.add_argument('--org_v', action = 'store_true')
     parser.add_argument('--data_path', default="/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/", type = str, help = 'path to datasets root')
 
     args = parser.parse_args()
-
-    perm_model_path = args.model_path
-
-    if (args.split_no == -1):
+    if args.split_no == -1:
         # eval results on all splits
         results = {}
         for split in range(1, 6):
-            # TODO don't hard code
-            args.model_path = perm_model_path.format(split)
+            # replace model path with correct split
+            args.model_path = re.sub("split=\d", f"split={split}", args.model_path)
+            print("model path:", args.model_path)
             args.split_no = split
             split_results = main(args)
             for k, v in split_results.items():
