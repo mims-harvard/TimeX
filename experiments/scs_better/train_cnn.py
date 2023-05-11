@@ -43,6 +43,7 @@ for i in range(1, 6):
         optimizer = optimizer,
         show_sizes = False,
         use_scheduler = False,
+        validate_by_step = None,
     )
     
     model_sdict_cpu = {k:v.cpu() for k, v in  model.state_dict().items()}

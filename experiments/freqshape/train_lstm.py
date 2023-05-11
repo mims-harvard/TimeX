@@ -2,7 +2,7 @@ import torch
 
 from txai.utils.predictors.loss import Poly1CrossEntropyLoss
 from txai.trainers.train_transformer import train
-from txai.models.encoders.simple import CNN
+from txai.models.encoders.simple import LSTM
 from txai.utils.data import process_Synth
 from txai.utils.predictors import eval_mvts_transformer
 from txai.synth_data.simple_spike import SpikeTrainDataset
@@ -22,23 +22,23 @@ for i in range(1, 6):
 
     val, test = D['val'], D['test']
 
-    model = CNN(
+    model = LSTM(
         d_inp = val[0].shape[-1],
         n_classes = 4,
     )
 
     model.to(device)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-3, weight_decay = 0.1)
+    optimizer = torch.optim.Adam(model.parameters(), lr = 3e-4)
     
-    spath = 'models/Freqshape_cnn_split={}.pt'.format(i)
+    spath = 'models/Freqshape_lstm_split={}.pt'.format(i)
 
     model, loss, auc = train(
         model,
         train_loader,
         val_tuple = val, 
         n_classes = 4,
-        num_epochs = 50,
+        num_epochs = 100,
         save_path = spath,
         optimizer = optimizer,
         show_sizes = False,
