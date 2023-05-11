@@ -71,3 +71,23 @@ def dkl_bernoullis(p1, p2):
     # print(p1)
     # print(p2)
     return d
+
+def stratified_sample(y, n):
+    # From chatgpt:
+    unique_labels = torch.unique(y)
+    samples_per_label = n // len(unique_labels)
+
+    samples = []
+    for label in unique_labels:
+        label_indices = (y == label).nonzero().squeeze()
+        label_samples = label_indices[torch.randperm(len(label_indices))][:samples_per_label]
+        samples.append(label_samples)
+
+    samples = torch.cat(samples).cpu()
+    extra_samples = n - len(samples)
+    if extra_samples > 0:
+        remaining_indices = torch.arange(y.shape[0])[~samples]
+        extra_samples_indices = remaining_indices[torch.randperm(len(remaining_indices))][:extra_samples]
+        samples = torch.cat((samples, extra_samples_indices))
+
+    return samples

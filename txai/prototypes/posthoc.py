@@ -89,3 +89,38 @@ def find_nearest_explanations(z_query, z_ref, dist = 'cosine', n_exps_per_q = 5)
     best_inds = sims.argsort(dim = -1, descending = True)[:,:n_exps_per_q]
 
     return best_inds # Shape (nq, n_exps_per_q)
+
+def filter_prototypes(p_z, z_ref, dist = 'cosine', lower_bound = 5, get_count_dist = False):
+
+    if dist == 'cosine':
+        
+        zq_norm = F.normalize(p_z, dim = 1)
+        zr_norm = F.normalize(z_ref, dim = 1)
+
+        print('zq_norm', zq_norm.shape)
+        print('zr_norm', zr_norm.shape)
+
+        sims = torch.matmul(zq_norm, zr_norm.transpose(0, 1))
+
+    else:
+        raise ValueError('{} metric not implemented'.format(dist))
+
+    am = sims.argmax(dim=0)
+    print('am', am)
+
+    # Find all inds that have at least lower_bound occurences:
+    found = torch.unique(am)
+    found_counts = torch.tensor([(f == am).sum() for f in found])
+    count_mask = found_counts > lower_bound
+
+    choices = found[count_mask]
+
+    print('choices', choices)
+
+    if get_count_dist:
+        count_dist_overall = torch.tensor([(f == am).sum() for f in torch.arange(p_z.shape[0])])
+        return choices, count_dist_overall
+    else:
+        return choices
+
+    

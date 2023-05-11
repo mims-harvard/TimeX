@@ -1,6 +1,6 @@
 import torch
 
-def concat_all_dicts(dlist):
+def concat_all_dicts(dlist, org_v = False):
     # Marries together all dictionaries
     # Will change based on output from model
 
@@ -10,16 +10,16 @@ def concat_all_dicts(dlist):
 
     for d in dlist:
         for k in d.keys():
-            if k == 'smooth_src':
+            if k == 'smooth_src' and org_v:
                 mother_dict[k].append(torch.stack(d[k], dim = -1))
             else:   
                 mother_dict[k].append(d[k])
 
-
     mother_dict['pred'] = torch.cat(mother_dict['pred'], dim = 0).cpu()
     mother_dict['pred_mask'] = torch.cat(mother_dict['pred_mask'], dim = 0).cpu()
     mother_dict['mask_logits'] = torch.cat(mother_dict['mask_logits'], dim = 0).cpu()
-    mother_dict['concept_scores'] = torch.cat(mother_dict['concept_scores'], dim = 0).cpu()
+    if org_v:
+        mother_dict['concept_scores'] = torch.cat(mother_dict['concept_scores'], dim = 0).cpu()
     mother_dict['ste_mask'] = torch.cat(mother_dict['ste_mask'], dim = 0).cpu()
     # [[(), ()], ... 24]
     mother_dict['smooth_src'] = torch.cat(mother_dict['smooth_src'], dim = 1).cpu() # Will be (T, B, d, ne)
@@ -34,7 +34,7 @@ def concat_all_dicts(dlist):
 
     return mother_dict
 
-def batch_forwards(model, X, times, batch_size = 64):
+def batch_forwards(model, X, times, batch_size = 64, org_v = False):
     '''
     Runs the model in batches for large datasets. Used to get lots of embeddings, outputs, etc.
         - Need to use this bc there's a specialized dictionary notation for output of the forward method (see concat_all_dicts)
@@ -56,7 +56,7 @@ def batch_forwards(model, X, times, batch_size = 64):
 
         out_list.append(out)
 
-    out_full = concat_all_dicts(out_list)
+    out_full = concat_all_dicts(out_list, org_v = org_v)
 
     return out_full
 

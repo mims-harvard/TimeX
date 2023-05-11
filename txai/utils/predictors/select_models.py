@@ -1,6 +1,8 @@
 import torch
 import torch.nn.functional as F
 
+from txai.utils.predictors.loss_cl import LabelConsistencyLoss
+
 # Old selection criteria, here for reference: -----------------
 def lower_bound_performance(lower_bound):
     def func(metric, sparsity):
@@ -28,3 +30,14 @@ def small_mask(out_dict, val = None):
 
 def sim_small_mask(out_dict, val = None):
     return cosine_sim(out_dict) + small_mask(out_dict)
+
+def simloss_on_val_wboth(sim_criterion, lam = 1.0):
+    # Early stopping for sim loss
+
+    def f(out_dict, val = None):
+        org_z, con_z = out_dict['all_z']
+        mlab, flab = out_dict['pred_mask'], out_dict['pred']
+        L = sim_criterion[0](org_z, con_z) + lam * sim_criterion[1](mlab, flab)
+        return -1.0 * L # Need maximum, so return negative
+
+    return f

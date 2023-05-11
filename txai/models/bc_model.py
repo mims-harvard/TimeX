@@ -8,7 +8,7 @@ from txai.models.mask_generators.maskgen import MaskGenerator
 
 from txai.utils.predictors.loss import GSATLoss, ConnectLoss
 from txai.utils.predictors.loss_smoother_stats import *
-from txai.utils.functional import js_divergence
+from txai.utils.functional import js_divergence, stratified_sample
 
 transformer_default_args = {
     'enc_dropout': None,
@@ -41,7 +41,9 @@ class AblationParameters:
     g_pret_equals_g: bool = field(default = False)
     label_based_on_mask: bool = field(default = False)
     use_ste: bool = field(default = True)
-    ptype_assimilation: bool = field(default=True)
+    # Prototypes:
+    ptype_assimilation: bool = field(default = False)
+    side_assimilation: bool = field(default = False)
 
 default_abl = AblationParameters() # Class based on only default params
 
@@ -165,10 +167,11 @@ class BCExplainModel(nn.Module):
                 ptype_inds = torch.cat([match_m[i,:].nonzero(as_tuple=True)[0] for i in range(match_m.shape[0])])
             else:
                 ptype_inds = []
-
         else:
-            if self.ablation_parameters.label_based_on_mask:
-                pred_mask = self.z_e_predictor(z_mask) # Make prediction on masked input
+            ptype_inds = None
+
+        if self.ablation_parameters.label_based_on_mask:
+            pred_mask = self.z_e_predictor(z_mask) # Make prediction on masked input
 
         total_out_dict = {
             'pred': pred_regular, # Prediction on regular embedding (prediction branch)
@@ -178,9 +181,11 @@ class BCExplainModel(nn.Module):
             'smooth_src': src,                                  # Keep for visualizers
             'all_z': (z_main, z_mask),
             'z_mask_list': z_mask,
-            'ptype_inds': ptype_inds,
-            'ptypes': ptypes,
         }
+
+        if self.ablation_parameters.ptype_assimilation:
+            total_out_dict['ptype_inds'] = ptype_inds
+            total_out_dict['ptypes'] = ptypes
 
         return total_out_dict
 
@@ -219,7 +224,10 @@ class BCExplainModel(nn.Module):
     def hard_ptype_matching(self, z_mask):
         # z_mask: shape (B, d_z)
 
-        zm_n = F.normalize(z_mask, dim = -1)
+        if self.ablation_parameters.side_assimilation:
+            zm_n = F.normalize(z_mask.detach(), dim = -1)
+        else:
+            zm_n = F.normalize(z_mask, dim = -1)
         pt_n = F.normalize(self.prototypes, dim = -1)
 
         sim_mat = torch.matmul(zm_n, pt_n.transpose(0,1))
@@ -233,6 +241,25 @@ class BCExplainModel(nn.Module):
 
         return ptype_replacements, hard_match_matrix
 
+    def init_prototypes(self, train, seed = None, stratify = True):
+        
+        # Initialize prototypes with random training samples:
+        X, times, y = train
+
+        if seed is not None:
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed(seed)
+
+        if stratify:
+            # Create class weights for tensor:
+            inds = stratified_sample(y, n = self.n_prototypes)
+        else:
+            inds = torch.randperm(X.shape[1])[:self.n_prototypes]
+
+        Xp, times_p = X[:,inds,:], times[:,inds]
+        z_p = self.encoder_main.embed(Xp, times_p, captum_input = False)
+
+        self.prototypes = torch.nn.Parameter(z_p.detach().clone()) # Init prototypes to class (via parameter)
     
     def _get_baseline(self, B):
         mu, std = self.masktoken_stats

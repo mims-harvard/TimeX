@@ -1,5 +1,6 @@
 import torch
 from sklearn.metrics import f1_score
+from txai.models.run_model_utils import batch_forwards_TransformerMVTS
 
 @torch.no_grad()
 def eval_on_tuple(test_tuple, model, n_classes, mask = None):
@@ -110,7 +111,7 @@ def eval_mv4_idexp(test_tuple, test_tuple_external, model, masked = False):
     return f1, out
 
 @torch.no_grad()
-def eval_mvts_transformer(test_tuple, model):
+def eval_mvts_transformer(test_tuple, model, batch_size = None):
     '''
     Returns f1 score
     '''
@@ -118,7 +119,10 @@ def eval_mvts_transformer(test_tuple, model):
 
     X, times, y = test_tuple
 
-    pred = model(X, times)
+    if batch_size is not None:
+        pred, _ = batch_forwards_TransformerMVTS(model, X, times, batch_size = batch_size)
+    else:
+        pred = model(X, times)
 
     f1 = f1_score(y.cpu().numpy(), pred.argmax(dim=1).detach().cpu().numpy(), average='macro')
 

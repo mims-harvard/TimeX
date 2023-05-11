@@ -81,6 +81,15 @@ class LabelConsistencyLoss(torch.nn.Module):
         # else:
         return score
 
+class LabelAlignmentLoss(torch.nn.Module):
+    def __init__(self):
+        super(LabelAlignmentLoss, self).__init__()
+
+    def forward(self, mask_labels, full_labels):
+        mask_p = mask_labels.softmax(dim=-1)
+        full_p = full_labels.softmax(dim=-1)
+        return js_divergence(mask_p, full_p)
+
 class ConceptTopologyLoss(torch.nn.Module):
     def __init__(self, temperature = 1.0, prop_select = 0.5):
         super(ConceptTopologyLoss, self).__init__()

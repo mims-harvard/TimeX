@@ -1,4 +1,3 @@
-import re
 import argparse
 from pathlib import Path
 import torch
@@ -88,20 +87,14 @@ def main(args):
     Dname = args.dataset.lower()
 
     # Switch on loading test data:
-    if Dname == 'freqshape':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'FreqShape')
-    elif Dname == 'seqcombsingle':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombSingle')
-    elif Dname == 'scs_better':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombSingleBetter')
-    elif Dname == 'seqcomb_mv':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombMV')
-    elif Dname == 'freqshapeud':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/FreqShapeUD')
-    elif Dname == 'scs_inline':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleInline')
-    elif Dname == 'scs_fixone':
-        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleFixOne')
+    if Dname == 'epilepsy':
+        pass
+    elif Dname == 'pam':
+        pass
+    elif Dname == 'boiler':
+        pass
+    else:
+        raise ValueError('{} is not a valid dataset for stability'.format(Dname))
     
     test = D['test']
 
@@ -214,24 +207,26 @@ def main(args):
         print('\t{} \t = {:.4f} +- {:.4f}'.format(k, np.mean(v), np.std(v) / np.sqrt(len(v))))
 
     return results_dict
-    
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp_method', type = str, help = "Options: ['ig', 'dyna', 'winit', 'ours']")
     parser.add_argument('--dataset', type = str)
-    parser.add_argument('--split_no', default = 1, type=int)
+    parser.add_argument('--split_no', default = 1, type = int)
     parser.add_argument('--model_path', type = str, help = 'only time series transformer right now')
     parser.add_argument('--org_v', action = 'store_true')
     parser.add_argument('--data_path', default="/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/", type = str, help = 'path to datasets root')
 
     args = parser.parse_args()
-    if args.split_no == -1:
+
+    perm_model_path = args.model_path
+
+    if (args.split_no == -1):
         # eval results on all splits
         results = {}
         for split in range(1, 6):
-            # replace model path with correct split
-            args.model_path = re.sub("split=\d", f"split={split}", args.model_path)
-            print("model path:", args.model_path)
+            # TODO don't hard code
+            args.model_path = perm_model_path.format(split)
             args.split_no = split
             split_results = main(args)
             for k, v in split_results.items():

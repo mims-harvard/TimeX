@@ -9,6 +9,18 @@ from txai.utils.cl import in_batch_triplet_sampling
 
 from txai.utils.functional import js_divergence
 
+default_scheduler_args = {
+    'mode': 'max', 
+    'factor': 0.1, 
+    'patience': 5,
+    'threshold': 0.00001, 
+    'threshold_mode': 'rel',
+    'cooldown': 0, 
+    'min_lr': 1e-8, 
+    'eps': 1e-08, 
+    'verbose': True
+}
+
 def train_mv6_consistency(
         model,
         optimizer,
@@ -21,8 +33,10 @@ def train_mv6_consistency(
         beta_exp,
         beta_sim,
         train_tuple,
-        num_triplets_per_sample = 1,
         clip_norm = True,
+        use_scheduler = False,
+        wait_for_scheduler = 20,
+        scheduler_args = default_scheduler_args,
         selection_criterion = None,
         save_path = None,
         early_stopping = True,
@@ -44,6 +58,9 @@ def train_mv6_consistency(
     best_epoch = 0
     best_val_metric = -1e9
 
+    if use_scheduler:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, **scheduler_args)
+
     dataX, dataT, dataY = train_tuple # Unpack training variables
 
     for epoch in range(num_epochs):
@@ -55,11 +72,6 @@ def train_mv6_consistency(
 
             optimizer.zero_grad()
 
-            #print('ids', ids)
-
-            #ipdb.set_trace()
-
-            #out, out_tilde, masks, ste_mask, smoother_stats, smooth_src, (z, z_tilde) = model(X, times, captum_input = True)
             out_dict = model(X, times, captum_input = True)
             out = out_dict['pred']
             ste_mask = out_dict['ste_mask']
@@ -83,10 +95,14 @@ def train_mv6_consistency(
             if sim_criterion is not None:
                 if label_matching and embedding_matching:
                     org_embeddings, conc_embeddings = out_dict['all_z']
-                    if model.ablation_parameters.ptype_assimilation:
+                    if model.ablation_parameters.ptype_assimilation and (not (model.ablation_parameters.side_assimilation)):
                         conc_embeddings = out_dict['ptypes']
             
                     emb_sim_loss = sim_criterion[0](org_embeddings, conc_embeddings)
+
+                    if model.ablation_parameters.side_assimilation:
+                        emb_ptype_sim_loss = sim_criterion[0](org_embeddings, out_dict['ptypes'])
+                        emb_sim_loss += emb_ptype_sim_loss
 
                     pred_org = out_dict['pred']
                     pred_mask = out_dict['pred_mask']
@@ -174,6 +190,9 @@ def train_mv6_consistency(
             model.save_state(save_path)
             best_epoch = epoch
             print('Save at epoch {}: Metric={:.4f}'.format(epoch, met))
+
+        if use_scheduler and (epoch > wait_for_scheduler):
+            scheduler.step(met)
 
         if (epoch + 1) % 10 == 0:
             valsparse = '{:.4f}'.format(sparse)
