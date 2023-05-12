@@ -233,6 +233,10 @@ def main(args):
         model.load_state_dict(torch.load(args.model_path))
         model.to(device)
         model.eval()
+        if args.model_type == "lstm" and args.exp_method == "ig":
+            # training mode necessary for cudnn RNN backward 
+            model.train()
+
 
         explainer, needs_training = get_explainer(key = args.exp_method, args = args, device = device)
 
