@@ -210,6 +210,19 @@ class BCExplainModel(nn.Module):
 
         return out_dict
 
+    def forward_pass_ge(self, src, times, ste_mask, captum_input = False):
+        if self.d_inp > 1:
+            exp_src, ste_mask_attn = self.multivariate_mask(src, ste_mask)
+        else:
+            # Easy, simply transform to attention mask:
+            ste_mask_attn = transform_to_attn_mask(ste_mask)
+            exp_src = src
+    
+        pred_mask, z_mask, z_seq_mask = self.encoder_t(exp_src, times, attn_mask = ste_mask_attn, get_agg_embed = True)
+
+        return pred_mask
+
+
     def multivariate_mask(self, src, ste_mask):
         # First apply mask directly on input:
         baseline = self._get_baseline(B = src.shape[1])

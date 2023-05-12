@@ -59,6 +59,7 @@ class TransformerMVTS(nn.Module):
             no_return_attn = True,
             pre_seq_mlp = False,
             stronger_clf_head = False,
+            pre_agg_transform = False,
             ):
 
         super(TransformerMVTS, self).__init__()
@@ -78,6 +79,7 @@ class TransformerMVTS(nn.Module):
         self.norm_embedding = norm_embedding
         self.pre_seq_mlp = pre_seq_mlp
         self.stronger_clf_head = stronger_clf_head
+        self.pre_agg_transform = pre_agg_transform
 
         self.time_rand_mask_size = time_rand_mask_size
         self.attn_rand_mask_size = attn_rand_mask_size
@@ -133,6 +135,16 @@ class TransformerMVTS(nn.Module):
                 nn.Linear(d_fi, d_fi),
                 nn.ReLU(),
                 nn.Linear(d_fi, n_classes),
+            )
+
+        if self.pre_agg_transform:
+            self.pre_agg_net = nn.Sequential(
+                nn.Linear(d_fi, d_fi),
+                nn.PReLU(),
+                nn.Linear(d_fi, d_fi),
+                nn.PReLU(),
+                nn.Linear(d_fi, d_fi),
+                nn.PReLU(),
             )
 
         self.relu = nn.ReLU()
@@ -236,6 +248,9 @@ class TransformerMVTS(nn.Module):
 
         if show_sizes:
             print('transformer_encoder', output.shape)
+
+        if self.pre_agg_transform:
+            output_preagg = self.pre_agg_net(output_preagg)
 
         # Aggregation scheme:
         if aggregate:

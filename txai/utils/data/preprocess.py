@@ -228,7 +228,7 @@ def process_ECG(split_no = 1, device = None, base_path = ecg_base_path):
     return train_chunk, val_chunk, test_chunk
 
 mitecg_base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG'
-def process_MITECG(split_no = 1, device = None, hard_split = False, normalize = False, base_path = mitecg_base_path):
+def process_MITECG(split_no = 1, device = None, hard_split = False, normalize = False, balance_classes = False, base_path = mitecg_base_path):
 
     split_path = 'split={}.pt'.format(split_no)
     idx_train, idx_val, idx_test = torch.load(os.path.join(base_path, split_path))
@@ -250,7 +250,15 @@ def process_MITECG(split_no = 1, device = None, hard_split = False, normalize = 
     Pval, time_val, yval = X[:,idx_val,:].float(), times[:,idx_val], y[idx_val].long()
     Ptest, time_test, ytest = X[:,idx_test,:].float(), times[:,idx_test], y[idx_test].long()
 
-    #if normalize:
+    if normalize:
+
+        # Get mean, std of the whole sample from training data, apply to val, test:
+        mu = Ptrain.mean()
+        std = Ptrain.std()
+        Ptrain = (Ptrain - mu) / std
+        Pval = (Pval - mu) / std
+        Ptest = (Ptest - mu) / std
+
         # Normalize each sample to between 0,1:
         # samp_len = Ptrain.shape[0]
         # batch_mins = Ptrain.min(dim=0)[0].unsqueeze(0).repeat(samp_len, 1, 1)
@@ -269,9 +277,48 @@ def process_MITECG(split_no = 1, device = None, hard_split = False, normalize = 
         # time_val = time_val / 60.0
         # time_test = time_test / 60.0
 
+    if balance_classes:
+        diff_to_mask = (ytrain == 0).sum() - (ytrain == 1).sum()
+        all_zeros = (ytrain == 0).nonzero(as_tuple=True)[0]
+        mask_out = all_zeros[:diff_to_mask]
+        to_mask_in = torch.tensor([not (i in mask_out) for i in torch.arange(Ptrain.shape[1])])
+        print('Num before', (ytrain == 0).sum())
+        Ptrain = Ptrain[:,to_mask_in,:]
+        time_train = time_train[:,to_mask_in]
+        ytrain = ytrain[to_mask_in]
+        print('Num after 0', (ytrain == 0).sum())
+        print('Num after 1', (ytrain == 1).sum())
+
+        diff_to_mask = (yval == 0).sum() - (yval == 1).sum()
+        all_zeros = (yval == 0).nonzero(as_tuple=True)[0]
+        mask_out = all_zeros[:diff_to_mask]
+        to_mask_in = torch.tensor([not (i in mask_out) for i in torch.arange(Pval.shape[1])])
+        print('Num before', (yval == 0).sum())
+        Pval = Pval[:,to_mask_in,:]
+        time_val = time_val[:,to_mask_in]
+        yval = yval[to_mask_in]
+        print('Num after 0', (yval == 0).sum())
+        print('Num after 1', (yval == 1).sum())
+
+        diff_to_mask = (ytest == 0).sum() - (ytest == 1).sum()
+        all_zeros = (ytest == 0).nonzero(as_tuple=True)[0]
+        mask_out = all_zeros[:diff_to_mask]
+        to_mask_in = torch.tensor([not (i in mask_out) for i in torch.arange(Ptest.shape[1])])
+        print('Num before', (ytest == 0).sum())
+        Ptest = Ptest[:,to_mask_in,:]
+        time_test = time_test[:,to_mask_in]
+        ytest = ytest[to_mask_in]
+        print('Num after 0', (ytest == 0).sum())
+        print('Num after 1', (ytest == 1).sum())
+
     train_chunk = ECGchunk(Ptrain, None, time_train, ytrain, device = device)
     val_chunk = ECGchunk(Pval, None, time_val, yval, device = device)
     test_chunk = ECGchunk(Ptest, None, time_test, ytest, device = device)
+
+    print('Num after 0', (yval == 0).sum())
+    print('Num after 1', (yval == 1).sum())
+    print('Num after 0', (ytest == 0).sum())
+    print('Num after 1', (ytest == 1).sum())
 
     gt_exps = saliency.transpose(0,1).unsqueeze(-1)[:,idx_test,:]
 

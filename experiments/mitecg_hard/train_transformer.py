@@ -14,13 +14,13 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 clf_criterion = Poly1CrossEntropyLoss(
     num_classes = 2,
     epsilon = 1.0,
-    weight = None,
+    weight = None,#torch.tensor([1.0, 3.0]),
     reduction = 'mean'
 )
 
 for i in range(1, 6):
     torch.cuda.empty_cache()
-    trainEpi, val, test, _ = process_MITECG(split_no = i, device = device, hard_split = True, normalize = True,
+    trainEpi, val, test, _ = process_MITECG(split_no = i, device = device, hard_split = True, normalize = True, balance_classes = True,
         base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Hard/')
     train_dataset = EpiDataset(trainEpi.X, trainEpi.time, trainEpi.y)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = 16, shuffle = True)
@@ -32,16 +32,25 @@ for i in range(1, 6):
     val = (val.X, val.time, val.y)
     test = (test.X, test.time, test.y)
 
+    # Look at y's:
+    # print((val[-1] == 0).sum())
+    # print((val[-1] == 1).sum())
+    # print((trainEpi.y == 0).sum())
+    # print((trainEpi.y == 1).sum())
+    # exit()
+
     model = TransformerMVTS(
         d_inp = val[0].shape[-1],
         max_len = val[0].shape[0],
         n_classes = 2,
-        nlayers = 3,
+        nlayers = 2,
         nhead = 1,
         trans_dim_feedforward = 32,
         trans_dropout = 0.1,
+        #enc_dropout = 0.1,
         d_pe = 16,
         stronger_clf_head = True,
+        pre_agg_transform = False,
         # aggreg = 'mean',
         # norm_embedding = True
     )
@@ -49,7 +58,7 @@ for i in range(1, 6):
     model.to(device)
 
     print('lr', 5e-4)
-    optimizer = torch.optim.AdamW(model.parameters(), lr = 5e-4, weight_decay = 0.001)
+    optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-4, weight_decay = 0.001)
     
     spath = 'models/transformer_trial_split={}.pt'.format(i)
     print('Saving at {}'.format(spath))
@@ -59,7 +68,7 @@ for i in range(1, 6):
         train_loader,
         val_tuple = val, 
         n_classes = 2,
-        num_epochs = 100,
+        num_epochs = 1000,
         save_path = spath,
         optimizer = optimizer,
         show_sizes = False,
