@@ -42,7 +42,7 @@ def train(
         optimizer = None, 
         standardize = False,
         save_path = None,
-        validate_by_step = False,
+        validate_by_step = None,
         criterion = None,
         scheduler_args = default_scheduler_args,
         show_sizes = False,
@@ -50,7 +50,8 @@ def train(
         use_scheduler = True,
         counterfactual_training = False,
         max_mask_size = None,
-        replace_method = None):
+        replace_method = None,
+        print_freq = 10):
     '''
     Loader should output (B, d, T) - in style of captum input
 
@@ -168,7 +169,7 @@ def train(
                 torch.save(model.state_dict(), save_path)
                 #best_sd = model.state_dict()
 
-        if (epoch + 1) % 10 == 0: # Print progress:
+        if (epoch + 1) % print_freq == 0: # Print progress:
             # print('y', y)
             # print('pred', pred) 
             met = 'MAE' if regression else 'F1'

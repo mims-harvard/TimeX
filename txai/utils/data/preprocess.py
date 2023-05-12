@@ -1,6 +1,7 @@
 import random
 import torch
 import numpy as np
+import pandas as pd
 import sys, os
 from .utils_phy12 import *
 
@@ -36,7 +37,7 @@ class PAMchunk:
             self.y[idx].unsqueeze(dim=0), \
             static_idx
 
-class PAMDataset(torch.utils.data.Dataset):
+class RWDataset(torch.utils.data.Dataset):
     def __init__(self, X, times, y):
         self.X = X # Shape: (T, N, d)
         self.times = times # Shape: (T, N)
@@ -227,7 +228,7 @@ def process_ECG(split_no = 1, device = None, base_path = ecg_base_path):
     return train_chunk, val_chunk, test_chunk
 
 mitecg_base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG'
-def process_MITECG(split_no = 1, device = None, hard_split = False, base_path = mitecg_base_path):
+def process_MITECG(split_no = 1, device = None, hard_split = False, normalize = False, base_path = mitecg_base_path):
 
     split_path = 'split={}.pt'.format(split_no)
     idx_train, idx_val, idx_test = torch.load(os.path.join(base_path, split_path))
@@ -249,12 +250,33 @@ def process_MITECG(split_no = 1, device = None, hard_split = False, base_path = 
     Pval, time_val, yval = X[:,idx_val,:].float(), times[:,idx_val], y[idx_val].long()
     Ptest, time_test, ytest = X[:,idx_test,:].float(), times[:,idx_test], y[idx_test].long()
 
+    #if normalize:
+        # Normalize each sample to between 0,1:
+        # samp_len = Ptrain.shape[0]
+        # batch_mins = Ptrain.min(dim=0)[0].unsqueeze(0).repeat(samp_len, 1, 1)
+        # batch_maxes = Ptrain.max(dim=0)[0].unsqueeze(0).repeat(samp_len, 1, 1)
+        # Ptrain = (Ptrain -  batch_mins) / batch_maxes 
+
+        # batch_mins = Pval.min(dim=0)[0].unsqueeze(0).repeat(samp_len, 1, 1)
+        # batch_maxes = Pval.max(dim=0)[0].unsqueeze(0).repeat(samp_len, 1, 1)
+        # Pval = (Pval -  batch_mins) / batch_maxes 
+
+        # batch_mins = Ptest.min(dim=0)[0].unsqueeze(0).repeat(samp_len, 1, 1)
+        # batch_maxes = Ptest.max(dim=0)[0].unsqueeze(0).repeat(samp_len, 1, 1)
+        # Ptest = (Ptest -  batch_mins) / batch_maxes 
+
+        # time_train = time_train / 60.0
+        # time_val = time_val / 60.0
+        # time_test = time_test / 60.0
+
     train_chunk = ECGchunk(Ptrain, None, time_train, ytrain, device = device)
     val_chunk = ECGchunk(Pval, None, time_val, yval, device = device)
     test_chunk = ECGchunk(Ptest, None, time_test, ytest, device = device)
 
+    gt_exps = saliency.transpose(0,1).unsqueeze(-1)[:,idx_test,:]
+
     if hard_split:
-        return train_chunk, val_chunk, test_chunk, saliency
+        return train_chunk, val_chunk, test_chunk, gt_exps
     else:
         return train_chunk, val_chunk, test_chunk
 
@@ -357,3 +379,50 @@ def decomposition_statistics(pool_layer, X):
     }
 
     return d
+
+boiler_base_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Boiler"
+def process_Boiler(split_no = 1, device = None, base_path = boiler_base_path):
+    data = pd.read_csv(os.path.join(base_path, 'full.csv')).values
+    data = data[:, 2:]  #remove time step
+
+    window_size = 6
+    segments_length = [1, 2, 3, 4, 5, 6]
+
+    # Load path
+
+    print('positive sample size:',sum(data[:,-1]))
+    feature, label = [], []
+    for i in range(window_size - 1, len(data)):
+        label.append(data[i, -1])
+
+        sample = []
+        for length in segments_length:
+            a = data[(i- length + 1):(i + 1), :-1]
+            a = np.pad(a,pad_width=((0,window_size -length),(0,0)),mode='constant')# padding to [window_size, x_dim]
+            sample.append(a)
+
+        sample = np.array(sample)
+        sample = np.transpose(sample,axes=((2,0,1)))[:,:,:]
+
+        feature.append(sample)
+
+    feature, label = np.array(feature).astype(np.float32), np.array(label).astype(np.int32)
+
+    x_full = torch.tensor(feature.reshape(*feature.shape[:-2], -1)).permute(2,0,1)
+    y_full = torch.from_numpy(label)
+
+    # Make times:
+    T_full = torch.zeros(36, x_full.shape[1])
+    for i in range(T_full.shape[1]):
+        T_full[:,i] = torch.arange(36)
+
+    # Now split:
+    idx_train, idx_val, idx_test = torch.load(os.path.join(base_path, 'split={}.pt'.format(split_no)))
+
+    x_full, T_full, y_full = x_full.to(device), T_full.to(device), y_full.to(device).long()
+
+    train_d = (x_full[:,idx_train,:], T_full[:,idx_train], y_full[idx_train])
+    val_d = (x_full[:,idx_val,:], T_full[:,idx_val], y_full[idx_val])
+    test_d = (x_full[:,idx_test,:], T_full[:,idx_test], y_full[idx_test])
+
+    return train_d, val_d, test_d

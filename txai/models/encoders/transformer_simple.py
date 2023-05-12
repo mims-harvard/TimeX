@@ -57,6 +57,8 @@ class TransformerMVTS(nn.Module):
             time_rand_mask_size = None,
             attn_rand_mask_size = None,
             no_return_attn = True,
+            pre_seq_mlp = False,
+            stronger_clf_head = False,
             ):
 
         super(TransformerMVTS, self).__init__()
@@ -74,6 +76,8 @@ class TransformerMVTS(nn.Module):
         self.d_static = d_static
         self.d_pe = d_pe
         self.norm_embedding = norm_embedding
+        self.pre_seq_mlp = pre_seq_mlp
+        self.stronger_clf_head = stronger_clf_head
 
         self.time_rand_mask_size = time_rand_mask_size
         self.attn_rand_mask_size = attn_rand_mask_size
@@ -97,6 +101,14 @@ class TransformerMVTS(nn.Module):
         # Encode input
         self.MLP_encoder = nn.Linear(d_inp, d_inp)
 
+        if self.pre_seq_mlp:
+            self.pre_MLP_encoder = nn.Sequential(
+                nn.Linear(d_inp, d_inp),
+                nn.PReLU(),
+                nn.Linear(d_inp, d_inp),
+                nn.PReLU(),
+            )
+
         if self.static:
             self.emb = nn.Linear(self.d_static, d_inp)
 
@@ -106,11 +118,22 @@ class TransformerMVTS(nn.Module):
             d_fi = d_inp + self.d_pe + d_inp
 
         # Classification head
-        self.mlp = nn.Sequential(
-            nn.Linear(d_fi, d_fi),
-            nn.ReLU(),
-            nn.Linear(d_fi, n_classes),
-        )
+        if stronger_clf_head:
+            self.mlp = nn.Sequential(
+                nn.Linear(d_fi, d_fi),
+                nn.PReLU(),
+                nn.Linear(d_fi, d_fi),
+                nn.PReLU(),
+                nn.Linear(d_fi, d_fi),
+                nn.PReLU(),
+                nn.Linear(d_fi, n_classes),
+            )
+        else:
+            self.mlp = nn.Sequential(
+                nn.Linear(d_fi, d_fi),
+                nn.ReLU(),
+                nn.Linear(d_fi, n_classes),
+            )
 
         self.relu = nn.ReLU()
 
@@ -173,6 +196,9 @@ class TransformerMVTS(nn.Module):
 
         # Encode input vectors
         #src = self.MLP_encoder(src)
+
+        if self.pre_seq_mlp:
+            src = self.pre_MLP_encoder(src)
 
         if show_sizes:
             print('self.MLP_encoder(src)', src.shape)

@@ -10,6 +10,7 @@ from txai.models.encoders.transformer_simple import TransformerMVTS
 from txai.utils.experimental import get_explainer
 from txai.vis.vis_saliency import vis_one_saliency
 from txai.utils.data import process_Synth
+from txai.utils.data.preprocess import process_MITECG
 from txai.synth_data.simple_spike import SpikeTrainDataset
 
 from txai.models.modelv6_v2 import Modelv6_v2
@@ -79,6 +80,18 @@ def get_model(args, X):
             d_pe = 16,
         )
 
+    elif args.dataset == 'mitecg_hard':
+        model = TransformerMVTS(
+            d_inp = X.shape[-1],
+            max_len = X.shape[0],
+            nlayers = 2,
+            n_classes = 2,
+            trans_dim_feedforward = 64,
+            trans_dropout = 0.1,
+            d_pe = 16,
+            stronger_clf_head = True,
+        )
+
     #model = torch.compile(model)
 
     return model
@@ -102,9 +115,13 @@ def main(args):
         D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleInline')
     elif Dname == 'scs_fixone':
         D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleFixOne')
+    elif Dname == 'mitecg_hard':
+        D = process_MITECG(split_no = args.split_no, device = device, hard_split = True, base_path = Path(args.data_path) / 'MITECG-Hard')
     
-    test = D['test']
-
+    if Dname == 'mitecg_hard':
+        _, _, test, gt_exps = D
+    else:
+        test = D['test']
 
     if Dname == 'scs_better' or Dname == 'seqcombsingle' or Dname == 'scs_inline' or Dname == 'seqcomb_mv':
         y = test[2]
@@ -112,6 +129,22 @@ def main(args):
         times = test[1][:,y != 0]
         gt_exps = D['gt_exps'][:,(y != 0).detach().cpu(),:]
         y = y[y != 0]
+    elif Dname == 'mitecg_hard':
+        X, times, y = test.X, test.time, test.y 
+
+        # Filter based on 0 samples:
+        mask = (y == 1).clone().cpu()
+        # Detect when we fail to observe a wave:
+        detection_failure = (gt_exps.squeeze().sum(0) > 0)
+        mask = mask & detection_failure
+        X = X[:,mask,:]
+        times = times[:,mask]
+        gt_exps = gt_exps[:,mask,:]
+        y = y[mask]
+        #exit()
+        print(gt_exps.shape)
+        print((gt_exps.squeeze().sum(0) == 0).sum())
+        #exit()
     else:
         X, times, y = test
         gt_exps = D['gt_exps']
@@ -171,7 +204,7 @@ def main(args):
         winit_path = Path(args.model_path).parent / f"winit_split={args.split_no}/"
         winit = WinITWrapper(
             device, 
-            num_features=D["test"][0].shape[-1], 
+            num_features=test[0].shape[-1], 
             data_name=Dname, 
             path=winit_path
         )

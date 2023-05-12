@@ -6,6 +6,7 @@ import ipdb
 from txai.utils.predictors.loss_smoother_stats import exp_criterion_eval_smoothers
 from txai.utils.predictors.eval import eval_mv4
 from txai.utils.cl import in_batch_triplet_sampling
+from txai.models.run_model_utils import batch_forwards
 
 from txai.utils.functional import js_divergence
 
@@ -165,7 +166,8 @@ def train_mv6_consistency(
         # Eval after every epoch
         # Call evaluation function:
         model.eval()
-        f1, out = eval_mv4(val_tuple, model)
+        #f1, out = eval_mv4(val_tuple, model)
+        out = batch_forwards(model, val_tuple[0], val_tuple[1], batch_size = 64)
         #met = f1 # Copy for use below
         org_embeddings, conc_embeddings = out['all_z']
         #met = 2.0 - sim_criterion(org_embeddings, conc_embeddings)

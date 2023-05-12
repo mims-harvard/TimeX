@@ -15,11 +15,6 @@ from txai.utils.predictors import eval_mvts_transformer
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--rand_time', default = None, type = float, help = 'Size of random time mask. None if not needed.')
-parser.add_argument('--rand_attn', default = None, type = float, help = 'Size of random attn mask. None if not needed.')
-args = parser.parse_args()
-
 class PAMDataset(torch.utils.data.Dataset):
     def __init__(self, X, times, y):
         self.X = X # Shape: (T, N, d)
@@ -50,32 +45,22 @@ for i in range(1, 6):
         d_inp = trainPAM.X.shape[2],
         max_len = trainPAM.X.shape[0],
         n_classes = 8,
-        time_rand_mask_size = args.rand_time,
-        attn_rand_mask_size = args.rand_attn
     )
 
     # Convert to GPU:
     model.to(device)
 
-    spath = 'models/transformer_'
-
-    if args.rand_time is not None:
-        spath += 'T'
-
-    if args.rand_attn is not None:
-        spath += 'A'
-
-    spath += f'_split={i}.pt'
+    spath = f'models/transformer_split={i}.pt'
 
     # Train model:
     model, loss, auc = train(model, train_loader, 
         val_tuple = (val.X, val.time, val.y), n_classes = 8, num_epochs = 100,
-        save_path = spath)
+        save_path = spath, validate_by_step = None)
 
     elapsed.append(time.time() - start)
 
     # Get test result:
-    f1 = eval_mvts_transformer((test.X, test.time, test.y), model)
+    f1 = eval_mvts_transformer((test.X, test.time, test.y), model, batch_size = 64)
     test_f1.append(f1)
     print('Test F1: {:.4f} \t Time: {}'.format(f1, elapsed[-1]))
 

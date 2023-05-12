@@ -1,5 +1,6 @@
 import torch
-from sklearn.metrics import f1_score
+import numpy as np
+from sklearn.metrics import f1_score, average_precision_score, roc_auc_score
 from txai.models.run_model_utils import batch_forwards_TransformerMVTS
 
 @torch.no_grad()
@@ -111,7 +112,7 @@ def eval_mv4_idexp(test_tuple, test_tuple_external, model, masked = False):
     return f1, out
 
 @torch.no_grad()
-def eval_mvts_transformer(test_tuple, model, batch_size = None):
+def eval_mvts_transformer(test_tuple, model, batch_size = None, auprc = False, auroc = False):
     '''
     Returns f1 score
     '''
@@ -126,42 +127,26 @@ def eval_mvts_transformer(test_tuple, model, batch_size = None):
 
     f1 = f1_score(y.cpu().numpy(), pred.argmax(dim=1).detach().cpu().numpy(), average='macro')
 
-    return f1
+    pred_prob = pred.softmax(dim=-1).detach().cpu().numpy()
+    if pred_prob.shape[-1] == 2:
+        pred_prob = pred_prob[:,1]
 
-# def eval_on_tuple(test_tuple, model, n_classes, by_step = False, sat_output = False, duo = True, mask = None):
-#     '''
-#     Returns f1 score
-#     '''
+    if auprc:
+        yc = y.cpu().numpy()
+        one_hot_y = np.zeros((yc.shape[0], yc.max() + 1))
+        one_hot_y[:,yc] = 1
+        auprc_val = average_precision_score(one_hot_y, pred_prob, average = 'macro')
+    if auroc:
+        auroc_val = roc_auc_score(y.cpu().numpy(), pred_prob, average = 'macro', multi_class = 'ovr')
 
-#     model.eval()
-
-#     X, times, y = test_tuple
-
-#     if by_step:
-#         pred = torch.empty((X.shape[1], n_classes)).to(y.get_device())
-#         all_attns = []
-#         for i in range(X.shape[1]):
-#             if sat_output:
-#                 pred[i,:], sat_mask, attn = model(X[:,i,:], times[:,i].unsqueeze(-1))
-#             else:
-#                 pred[i,:], attn = model(X[:,i,:], times[:,i].unsqueeze(-1))
-
-#             all_attns.append(attn)
-
-#     else:
-#         if sat_output:
-#             if duo:
-#                 # sat_scores, joint_mask = model.enc_phi(X, times)
-#                 # pred = model.enc_theta(X, times, joint_mask)
-#                 pred, sat_scores = model(X, times, mask = mask)
-#             else:
-#                 pred, sat_mask, all_attns = model(X, times)
-#         else:
-#             pred, sat_scores = model(X, times)
-
-#     f1 = f1_score(y.cpu().numpy(), pred.argmax(dim=1).detach().cpu().numpy(), average='macro')
-
-#     return f1, sat_scores
+    if auprc and auroc:
+        return f1, auprc_val, auroc_val
+    elif auprc:
+        return f1, auprc_val
+    elif auroc:
+        return f1, auroc_val
+    else:
+        return f1
 
 @torch.no_grad()
 def eval_and_select(X, times, model):

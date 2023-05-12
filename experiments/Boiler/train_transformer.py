@@ -6,8 +6,7 @@ from txai.models.encoders.transformer_simple import TransformerMVTS
 from txai.utils.data import process_Synth
 from txai.utils.predictors import eval_mvts_transformer
 from txai.synth_data.simple_spike import SpikeTrainDataset
-from txai.utils.data import EpiDataset
-from txai.utils.data.preprocess import process_MITECG
+from txai.utils.data.preprocess import process_Boiler, RWDataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -20,52 +19,38 @@ clf_criterion = Poly1CrossEntropyLoss(
 
 for i in range(1, 6):
     torch.cuda.empty_cache()
-    trainEpi, val, test, _ = process_MITECG(split_no = i, device = device, hard_split = True, normalize = True,
-        base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Hard/')
-    train_dataset = EpiDataset(trainEpi.X, trainEpi.time, trainEpi.y)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = 16, shuffle = True)
-    
-    print('X shape')
-    print(trainEpi.X.shape)
-    print('y shape', trainEpi.y.shape)
-
-    val = (val.X, val.time, val.y)
-    test = (test.X, test.time, test.y)
+    trainB, val, test = process_Boiler(split_no = i, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Boiler/')
+    train_dataset = RWDataset(*trainB)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = 32, shuffle = True)
 
     model = TransformerMVTS(
         d_inp = val[0].shape[-1],
         max_len = val[0].shape[0],
         n_classes = 2,
-        nlayers = 3,
-        nhead = 1,
+        nlayers = 1,
         trans_dim_feedforward = 32,
         trans_dropout = 0.1,
         d_pe = 16,
-        stronger_clf_head = True,
-        # aggreg = 'mean',
-        # norm_embedding = True
+        norm_embedding = False,
     )
 
     model.to(device)
 
-    print('lr', 5e-4)
-    optimizer = torch.optim.AdamW(model.parameters(), lr = 5e-4, weight_decay = 0.001)
+    optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-3, weight_decay = 0.001)
     
-    spath = 'models/transformer_trial_split={}.pt'.format(i)
-    print('Saving at {}'.format(spath))
+    spath = 'models/transformer_split={}.pt'.format(i)
 
     model, loss, auc = train(
         model,
         train_loader,
         val_tuple = val, 
         n_classes = 2,
-        num_epochs = 100,
+        num_epochs = 1000,
         save_path = spath,
         optimizer = optimizer,
         show_sizes = False,
         validate_by_step = 32,
-        use_scheduler = False,
-        print_freq = 1
+        use_scheduler = False
     )
     
     model_sdict_cpu = {k:v.cpu() for k, v in  model.state_dict().items()}

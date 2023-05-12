@@ -7,17 +7,30 @@ from txai.trainers.train_mv6_consistency import train_mv6_consistency
 
 from txai.models.encoders.transformer_simple import TransformerMVTS
 from txai.models.bc_model import BCExplainModel, AblationParameters, transformer_default_args
-from txai.utils.data import process_Synth
+from txai.utils.data.preprocess import process_PAM
 from txai.utils.predictors.eval import eval_mv4
 from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.data.datasets import DatasetwInds
 from txai.utils.predictors.loss_cl import *
 from txai.utils.predictors.select_models import simloss_on_val_wboth
-from txai.utils.data.preprocess import process_MITECG
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
+class PAMDataset(torch.utils.data.Dataset):
+    def __init__(self, X, times, y):
+        self.X = X # Shape: (T, N, d)
+        self.times = times # Shape: (T, N)
+        self.y = y # Shape: (N,)
+
+    def __len__(self):
+        return self.X.shape[0]
+    
+    def __getitem__(self, idx):
+        x = self.X[:,idx,:]
+        T = self.times[:,idx]
+        y = self.y[idx]
+        return x, T, y 
 
 def naming_convention(args):
     if args.eq_ge:
@@ -45,12 +58,12 @@ def naming_convention(args):
 
 def main(args):
 
-    tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/mitecg_hard/models/transformer_split={}.pt"
+    tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/PAM/models/transformer_split={}.pt"
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     clf_criterion = Poly1CrossEntropyLoss(
-        num_classes = 2,
+        num_classes = 8,
         epsilon = 1.0,
         weight = None,
         reduction = 'mean'
@@ -69,21 +82,17 @@ def main(args):
 
     targs = transformer_default_args
 
-    for i in range(1, 2):
-        trainEpi, val, test, _ = process_MITECG(split_no = i, device = device, hard_split = True,
-            base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Hard/')
-        train_dataset = DatasetwInds(trainEpi.X, trainEpi.time, trainEpi.y)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = 16, shuffle = True)
+    for i in range(1, 6):
+        trainPAM, val, test = process_PAM(split_no = i, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/PAMAP2data/', gethalf = True)
+        # Output of above are chunks
+        train_dataset = DatasetwInds(trainPAM.X, trainPAM.time, trainPAM.y)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = 32, shuffle = True)
 
         val = (val.X, val.time, val.y)
         test = (test.X, test.time, test.y)
 
-        # Change transformer args:
-        targs['trans_dim_feedforward'] = 64
-        targs['trans_dropout'] = 0.1
-        targs['nlayers'] = 2
-        targs['stronger_clf_head'] = True
-        targs['norm_embedding'] = False
+        mu = trainPAM.X.mean(dim=1)
+        std = trainPAM.X.std(unbiased = True, dim = 1)
 
         abl_params = AblationParameters(
             equal_g_gt = args.eq_ge,
@@ -99,21 +108,24 @@ def main(args):
             'connect': 2.0
         }
 
+        targs['norm_embedding'] = False
+
         model = BCExplainModel(
             d_inp = val[0].shape[-1],
             max_len = val[0].shape[0],
-            n_classes = 2,
+            n_classes = 8,
             n_prototypes = 50,
             gsat_r = 0.5,
             transformer_args = targs,
             ablation_parameters = abl_params,
-            loss_weight_dict = loss_weight_dict
+            loss_weight_dict = loss_weight_dict,
+            masktoken_stats = (mu, std)
         )
 
         model.encoder_main.load_state_dict(torch.load(tencoder_path.format(i)))
         model.to(device)
 
-        model.init_prototypes(train = (trainEpi.X.to(device), trainEpi.time.to(device), trainEpi.y.to(device)))
+        model.init_prototypes(train = (trainPAM.X.to(device), trainPAM.time.to(device), trainPAM.y.to(device)))
 
         if not args.ge_rand_init: # Copies if not running this ablation
             model.encoder_t.load_state_dict(torch.load(tencoder_path.format(i)))
@@ -121,7 +133,7 @@ def main(args):
         for param in model.encoder_main.parameters():
             param.requires_grad = False
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-3, weight_decay = 0.001)
+        optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-4, weight_decay = 0.001)
         
         model_suffix = naming_convention(args)
         spath = os.path.join('models', model_suffix)
@@ -137,9 +149,9 @@ def main(args):
             beta_exp = 2.0,
             beta_sim = 1.0,
             val_tuple = val, 
-            num_epochs = 100,
+            num_epochs = 50,
             save_path = spath,
-            train_tuple = (trainEpi.X.to(device), trainEpi.time.to(device), trainEpi.y.to(device)),
+            train_tuple = (trainPAM.X.to(device), trainPAM.time.to(device), trainPAM.y.to(device)),
             early_stopping = True,
             selection_criterion = selection_criterion,
             label_matching = True,

@@ -20,7 +20,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def get_model(args, X):
 
-    if args.dataset == 'scs_better':
+    if args.dataset == 'epilepsy':
         model = TransformerMVTS(
             d_inp = X.shape[-1],
             max_len = X.shape[0],
@@ -32,51 +32,11 @@ def get_model(args, X):
             d_pe = 16,
         )
 
-    elif args.dataset == 'freqshape':
-        model = TransformerMVTS(
-            d_inp = X.shape[-1],
-            max_len = X.shape[0],
-            n_classes = 4,
-            trans_dim_feedforward = 16,
-            trans_dropout = 0.1,
-            d_pe = 16,
-        )
-    
-    elif args.dataset == 'scs_inline':
-        model = TransformerMVTS(
-            d_inp = 1,
-            max_len = 200,
-            n_classes = 4,
-            nlayers = 2,
-            nhead = 1,
-            trans_dim_feedforward = 128,
-            trans_dropout = 0.2,
-            d_pe = 16,
-            # aggreg = 'mean',
-            # norm_embedding = True
-        )
-    
-    elif args.dataset == 'scs_fixone':
-        model = TransformerMVTS(
-            d_inp = X.shape[-1],
-            max_len = X.shape[0],
-            nlayers = 2,
-            n_classes = 4,
-            trans_dim_feedforward = 32,
-            trans_dropout = 0.1,
-            d_pe = 16,
-        )
+    elif args.dataset == 'pam':
+        pass
 
-    elif args.dataset == 'seqcomb_mv':
-        model = TransformerMVTS(
-            d_inp = X.shape[-1],
-            max_len = X.shape[0],
-            nlayers = 2,
-            n_classes = 4,
-            trans_dim_feedforward = 128,
-            trans_dropout = 0.25,
-            d_pe = 16,
-        )
+    elif args.dataset == 'boiler':
+        pass
 
     #model = torch.compile(model)
 
@@ -95,19 +55,7 @@ def main(args):
         pass
     else:
         raise ValueError('{} is not a valid dataset for stability'.format(Dname))
-    
-    test = D['test']
 
-
-    if Dname == 'scs_better' or Dname == 'seqcombsingle' or Dname == 'scs_inline' or Dname == 'seqcomb_mv':
-        y = test[2]
-        X = test[0][:,(y != 0),:]
-        times = test[1][:,y != 0]
-        gt_exps = D['gt_exps'][:,(y != 0).detach().cpu(),:]
-        y = y[y != 0]
-    else:
-        X, times, y = test
-        gt_exps = D['gt_exps']
     T, B, d = X.shape
 
     if args.exp_method == 'ours':
@@ -149,36 +97,13 @@ def main(args):
                         generated_exps[:,iters[i]:,:] = out['mask_in']
                     else:
                         generated_exps[:,iters[i]:,:] = out['mask_in'].transpose(0,1)
+
                 else:
                     if batch_X.shape[-1] == 1:
                         generated_exps[:,iters[i]:iters[i+1],:] = out['mask_in']
                     else:
                         generated_exps[:,iters[i]:iters[i+1],:] = out['mask_in'].transpose(0,1)
 
-    elif args.exp_method == "winit":
-        from winit_wrapper import WinITWrapper, aggregate_scores # Moved here bc of import issues on Owen's side
-        model = get_model(args, X)
-        model.load_state_dict(torch.load(args.model_path))
-        model.to(device)
-        model.eval()
-        winit_path = Path(args.model_path).parent / f"winit_split={args.split_no}/"
-        winit = WinITWrapper(
-            device, 
-            num_features=D["test"][0].shape[-1], 
-            data_name=Dname, 
-            path=winit_path
-        )
-        winit.set_model(model)
-        winit.load_generators()
-        # winit wrapper expects shape of (batch, num_features, num_times) for X
-        # and (batch, num_times) for times
-        X_perm = X.permute(1, 2, 0)
-        times_perm = times.permute(1, 0)
-        attribution = winit.attribute(X_perm, times_perm)
-        # paper notes best performance with mean aggregation
-        generated_exps = torch.from_numpy(aggregate_scores(attribution, "mean"))
-        # permute (batch, features, times) back to (times, batch, features)
-        generated_exps = generated_exps.permute(2, 0, 1)
     else: # Use other explainer APIs:
         model = get_model(args, X)
         model.load_state_dict(torch.load(args.model_path))
@@ -197,9 +122,23 @@ def main(args):
                 exp = explainer(model, X[:,i,:].unsqueeze(1).clone(), times[:,i].unsqueeze(-1).clone(), y[i].unsqueeze(0).clone())
             #print(exp.shape)
             generated_exps[:,i,:] = exp
+
+    # Get perturbation mask:
+    perturb_mask = torch.zeros_like(X).bool()
+    for i in range(B):
+        exp = generated_exps[:,i,:]
+        perturb_mask[:,i,:] = (exp < exp.median()) # Masks in all values lower than the median (50th percentile)
     
+    perturb_mask = perturb_mask.float()
     
-    results_dict = ground_truth_xai_eval(generated_exps, gt_exps)
+    # Perturb unimportant parts of the input:
+    Xperturb = (perturb_mask * X)
+
+    # Model to evaluate on:
+    if args.exp_mehod == 'ours':
+        m = model.encoder_t
+    else:
+        m = model
 
     # Show all results:
     print('Results for {} explainer on {} with split={}'.format(args.exp_method, args.dataset, args.split_no))

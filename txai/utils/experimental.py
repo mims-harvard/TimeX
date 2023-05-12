@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from txai.utils.data.preprocess import zip_x_time_y
 from txai.utils.data import process_Synth, process_PAM, process_Epilepsy
 from txai.synth_data.generate_spikes import SpikeTrainDataset
-from txai.utils.data import EpiDataset, PAMDataset
+from txai.utils.data import EpiDataset#, PAMDataset
 
 from txai.models.encoders.transformer_simple import TransformerMVTS
 # from txai.models.gumbelmask_model import GumbelMask

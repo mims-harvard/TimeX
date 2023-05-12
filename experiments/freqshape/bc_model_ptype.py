@@ -13,7 +13,6 @@ from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.data.datasets import DatasetwInds
 from txai.utils.predictors.loss_cl import *
 from txai.utils.predictors.select_models import simloss_on_val_wboth
-from txai.utils.data.preprocess import process_MITECG
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -45,12 +44,12 @@ def naming_convention(args):
 
 def main(args):
 
-    tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/mitecg_hard/models/transformer_split={}.pt"
+    tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/freqshape/formal_models/Scomb_transformer_split={}.pt"
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     clf_criterion = Poly1CrossEntropyLoss(
-        num_classes = 2,
+        num_classes = 4,
         epsilon = 1.0,
         weight = None,
         reduction = 'mean'
@@ -69,20 +68,21 @@ def main(args):
 
     targs = transformer_default_args
 
-    for i in range(1, 2):
-        trainEpi, val, test, _ = process_MITECG(split_no = i, device = device, hard_split = True,
-            base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Hard/')
-        train_dataset = DatasetwInds(trainEpi.X, trainEpi.time, trainEpi.y)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = 16, shuffle = True)
+    for i in range(1, 6):
+        D = process_Synth(split_no = i, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/FreqShape')
+        dset = DatasetwInds(D['train_loader'].X.to(device), D['train_loader'].times.to(device), D['train_loader'].y.to(device))
+        train_loader = torch.utils.data.DataLoader(dset, batch_size = 64, shuffle = True)
 
-        val = (val.X, val.time, val.y)
-        test = (test.X, test.time, test.y)
+        val, test = D['val'], D['test']
+
+        # Calc statistics for baseline:
+        mu = D['train_loader'].X.mean(dim=1)
+        std = D['train_loader'].X.std(unbiased = True, dim = 1)
 
         # Change transformer args:
-        targs['trans_dim_feedforward'] = 64
+        targs['trans_dim_feedforward'] = 16
         targs['trans_dropout'] = 0.1
-        targs['nlayers'] = 2
-        targs['stronger_clf_head'] = True
+        targs['nlayers'] = 1
         targs['norm_embedding'] = False
 
         abl_params = AblationParameters(
@@ -102,7 +102,7 @@ def main(args):
         model = BCExplainModel(
             d_inp = val[0].shape[-1],
             max_len = val[0].shape[0],
-            n_classes = 2,
+            n_classes = 4,
             n_prototypes = 50,
             gsat_r = 0.5,
             transformer_args = targs,
@@ -113,7 +113,7 @@ def main(args):
         model.encoder_main.load_state_dict(torch.load(tencoder_path.format(i)))
         model.to(device)
 
-        model.init_prototypes(train = (trainEpi.X.to(device), trainEpi.time.to(device), trainEpi.y.to(device)))
+        model.init_prototypes(train = (D['train_loader'].X.to(device), D['train_loader'].times.to(device), D['train_loader'].y.to(device)))
 
         if not args.ge_rand_init: # Copies if not running this ablation
             model.encoder_t.load_state_dict(torch.load(tencoder_path.format(i)))
@@ -137,9 +137,9 @@ def main(args):
             beta_exp = 2.0,
             beta_sim = 1.0,
             val_tuple = val, 
-            num_epochs = 100,
+            num_epochs = 50,
             save_path = spath,
-            train_tuple = (trainEpi.X.to(device), trainEpi.time.to(device), trainEpi.y.to(device)),
+            train_tuple = (D['train_loader'].X, D['train_loader'].times, D['train_loader'].y),
             early_stopping = True,
             selection_criterion = selection_criterion,
             label_matching = True,
