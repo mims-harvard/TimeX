@@ -30,11 +30,12 @@ def run_dynamask(
         model,
         X,
         time_input,
-        keep_ratio = 0.1,
-        initial_mask_coeff = 0.5,
-        size_reg_factor_init = 0.01,
-        size_reg_factor_dilation = 100,
-        time_reg_factor = 0,
+        n_epoch=50,
+        keep_ratio = 0.01, #  Fraction of elements in X that should be kept by the mask (called a in the paper).
+        initial_mask_coeff = 0.5, # Always 0.5 in paper
+        size_reg_factor_init = 0.001,  # Initial coefficient for the regulator part of the total loss (lambda_0)
+        size_reg_factor_dilation = 100_000, # Ratio between the final and the initial size regulation factor (called delta in the paper).
+        time_reg_factor = 0, # Regulation factor for the variation in time (called lambda_c in the paper).
         learning_rate = 1.0e-1,
         momentum = 0.9,
         y = None,
@@ -47,19 +48,21 @@ def run_dynamask(
     '''
 
     pert = GaussianBlur(device)
-    mask = Mask(pert, device)
+    mask = Mask(pert, device, task="classification")
 
     CE = torch.nn.CrossEntropyLoss()
 
     mask.fit(X, time_input, model, loss_function = CE, 
         target = y,
+        n_epoch=n_epoch,
         keep_ratio = keep_ratio,
         initial_mask_coeff = initial_mask_coeff,
         size_reg_factor_init = size_reg_factor_init,
         size_reg_factor_dilation = size_reg_factor_dilation,
         time_reg_factor = time_reg_factor,
         learning_rate = learning_rate,
-        momentum = momentum)
+        momentum = momentum 
+        )
 
     # Extract mask tensor from model:
     return mask.mask_tensor
