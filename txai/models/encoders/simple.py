@@ -1,4 +1,5 @@
 from torch import nn
+import torch.nn.functional as F
 
 class CNN(nn.Module):
     def __init__(self, d_inp, n_classes, dim=128):
@@ -30,6 +31,11 @@ class CNN(nn.Module):
         else: 
             # time, batch, channels -> batch, channels, time
             x = x.permute(1, 2, 0)
+
+        if x.shape[-1] < 8:
+            # pad sequence to at least 8 so two max pools don't fail
+            # necessary for when WinIT uses a small window
+            x = F.pad(x, (0, 8 - x.shape[-1]), mode="constant", value=0)
 
         embedding = self.encoder(x)
         out = self.mlp(embedding)

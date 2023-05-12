@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from tqdm import trange
 
 from txai.models.encoders.transformer_simple import TransformerMVTS
+from txai.models.encoders.simple import CNN, LSTM
 from txai.utils.experimental import get_explainer
 from txai.vis.vis_saliency import vis_one_saliency
 from txai.utils.data import process_Synth
@@ -22,75 +23,83 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def get_model(args, X):
 
-    if args.dataset == 'scs_better':
-        model = TransformerMVTS(
-            d_inp = X.shape[-1],
-            max_len = X.shape[0],
-            n_classes = 4,
-            nlayers = 2,
-            nhead = 1,
-            trans_dim_feedforward = 64,
-            trans_dropout = 0.25,
-            d_pe = 16,
-        )
+    if args.model_type == "cnn":
+        # TODO set n_classes dependant on dataset
+        model = CNN(d_inp=X.shape[-1], n_classes=4)
+    elif args.model_type == "lstm":
+        # TODO set n_classes dependent on dataset
+        model = LSTM(d_inp=X.shape[-1], n_classes=4)
 
-    elif args.dataset == 'freqshape':
-        model = TransformerMVTS(
-            d_inp = X.shape[-1],
-            max_len = X.shape[0],
-            n_classes = 4,
-            trans_dim_feedforward = 16,
-            trans_dropout = 0.1,
-            d_pe = 16,
-        )
-    
-    elif args.dataset == 'scs_inline':
-        model = TransformerMVTS(
-            d_inp = 1,
-            max_len = 200,
-            n_classes = 4,
-            nlayers = 2,
-            nhead = 1,
-            trans_dim_feedforward = 128,
-            trans_dropout = 0.2,
-            d_pe = 16,
-            # aggreg = 'mean',
-            # norm_embedding = True
-        )
-    
-    elif args.dataset == 'scs_fixone':
-        model = TransformerMVTS(
-            d_inp = X.shape[-1],
-            max_len = X.shape[0],
-            nlayers = 2,
-            n_classes = 4,
-            trans_dim_feedforward = 32,
-            trans_dropout = 0.1,
-            d_pe = 16,
-        )
+    else: # transformer
+        if args.dataset == 'scs_better':
+            model = TransformerMVTS(
+                d_inp = X.shape[-1],
+                max_len = X.shape[0],
+                n_classes = 4,
+                nlayers = 2,
+                nhead = 1,
+                trans_dim_feedforward = 64,
+                trans_dropout = 0.25,
+                d_pe = 16,
+            )
 
-    elif args.dataset == 'seqcomb_mv':
-        model = TransformerMVTS(
-            d_inp = X.shape[-1],
-            max_len = X.shape[0],
-            nlayers = 2,
-            n_classes = 4,
-            trans_dim_feedforward = 128,
-            trans_dropout = 0.25,
-            d_pe = 16,
-        )
+        elif args.dataset == 'freqshape':
+            model = TransformerMVTS(
+                d_inp = X.shape[-1],
+                max_len = X.shape[0],
+                n_classes = 4,
+                trans_dim_feedforward = 16,
+                trans_dropout = 0.1,
+                d_pe = 16,
+            )
+        
+        elif args.dataset == 'scs_inline':
+            model = TransformerMVTS(
+                d_inp = 1,
+                max_len = 200,
+                n_classes = 4,
+                nlayers = 2,
+                nhead = 1,
+                trans_dim_feedforward = 128,
+                trans_dropout = 0.2,
+                d_pe = 16,
+                # aggreg = 'mean',
+                # norm_embedding = True
+            )
+        
+        elif args.dataset == 'scs_fixone':
+            model = TransformerMVTS(
+                d_inp = X.shape[-1],
+                max_len = X.shape[0],
+                nlayers = 2,
+                n_classes = 4,
+                trans_dim_feedforward = 32,
+                trans_dropout = 0.1,
+                d_pe = 16,
+            )
 
-    elif args.dataset == 'mitecg_hard':
-        model = TransformerMVTS(
-            d_inp = X.shape[-1],
-            max_len = X.shape[0],
-            nlayers = 2,
-            n_classes = 2,
-            trans_dim_feedforward = 64,
-            trans_dropout = 0.1,
-            d_pe = 16,
-            stronger_clf_head = True,
-        )
+        elif args.dataset == 'seqcomb_mv':
+            model = TransformerMVTS(
+                d_inp = X.shape[-1],
+                max_len = X.shape[0],
+                nlayers = 2,
+                n_classes = 4,
+                trans_dim_feedforward = 128,
+                trans_dropout = 0.25,
+                d_pe = 16,
+            )
+
+        elif args.dataset == 'mitecg_hard':
+            model = TransformerMVTS(
+                d_inp = X.shape[-1],
+                max_len = X.shape[0],
+                nlayers = 2,
+                n_classes = 2,
+                trans_dim_feedforward = 64,
+                trans_dropout = 0.1,
+                d_pe = 16,
+                stronger_clf_head = True,
+            )
 
     #model = torch.compile(model)
 
@@ -254,6 +263,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type = str)
     parser.add_argument('--split_no', default = 1, type=int)
     parser.add_argument('--model_path', type = str, help = 'only time series transformer right now')
+    parser.add_argument('--model_type', type = str, default="transformer", choices=["transformer", "cnn", "lstm"])
     parser.add_argument('--org_v', action = 'store_true')
     parser.add_argument('--data_path', default="/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/", type = str, help = 'path to datasets root')
 
