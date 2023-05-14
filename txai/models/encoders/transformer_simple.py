@@ -94,11 +94,11 @@ class TransformerMVTS(nn.Module):
             dim_feedforward = self.trans_dim_feedforward, 
             dropout = self.trans_dropout,
             batch_first = False)
-        if self.norm_embedding:
-            lnorm = nn.LayerNorm(self.d_pe + d_inp) # self.d_pe + d_inp
-            self.transformer_encoder = TransformerEncoderInterpret(encoder_layers, self.nlayers, norm = lnorm)
-        else:
-            self.transformer_encoder = TransformerEncoderInterpret(encoder_layers, self.nlayers)
+        #if self.norm_embedding:
+            #lnorm = nn.LayerNorm(self.d_pe + d_inp) # self.d_pe + d_inp
+            #self.transformer_encoder = TransformerEncoderInterpret(encoder_layers, self.nlayers, norm = lnorm)
+        #else:
+        self.transformer_encoder = TransformerEncoderInterpret(encoder_layers, self.nlayers)
 
         # Encode input
         self.MLP_encoder = nn.Linear(d_inp, d_inp)
@@ -270,6 +270,9 @@ class TransformerMVTS(nn.Module):
 
             if static is not None: # Use embedding of static vector:
                 output = torch.cat([output, emb], dim=1)
+
+        if self.norm_embedding and aggregate:
+            output = F.normalize(output, dim = -1)
 
         # TODO: static if aggregate is False
 

@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import torch
 from tqdm import trange, tqdm
 
+from txai.vis.vis_saliency import vis_one_saliency
+
 class SynthTrainDataset(torch.utils.data.Dataset):
     def __init__(self, X, times, y):
         self.X, self.times, self.y = X, times, y
@@ -49,6 +51,22 @@ def visualize_some(dataset, save_prefix = ''):
         ax2.imshow(gtc)
         fig.suptitle('Label = {}'.format(i))
         plt.savefig(save_prefix + 'example_{}.png'.format(i))
+
+def plot_vis_mv(dataset):
+    X, times, y = dataset['test']
+    gt_exps = dataset['gt_exps']
+
+    uni = torch.unique(y).numpy()
+
+    fig, ax = plt.subplots(X.shape[-1], len(uni), dpi = 200, figsize = (10, 10))
+
+    for j, i in enumerate(uni):
+
+        choice = np.random.choice((y == i).nonzero(as_tuple=True)[0].numpy())
+
+        Xc, gtc = X[:,choice,:], gt_exps[:,choice,:]
+
+        vis_one_saliency(Xc, gtc, ax, fig, col_num = j)
 
 def plot_visualize_some(dataset):
     X, times, y = dataset['test']

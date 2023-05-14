@@ -134,12 +134,18 @@ class EmbedConsistencyLoss(torch.nn.Module):
         original_sim_mat = torch.matmul(original_embeddings, original_embeddings.transpose(0,1)) # Size (B, B)
         concept_sim_mat = torch.matmul(concept_embeddings, concept_embeddings.transpose(0,1)) # Size (B, B)
 
+        # print('original_sim_mat', original_sim_mat.mean())
+        # print('concept_sim_mat', concept_sim_mat.mean())
+
         # Normalize by batch:
-        if self.normalize_distance:
-            original_sim_mat = original_sim_mat / original_sim_mat.mean()
-            concept_sim_mat = concept_sim_mat / concept_sim_mat.mean()
+        # if self.normalize_distance:
+        #     original_sim_mat = original_sim_mat / original_sim_mat.std()
+        #     concept_sim_mat = concept_sim_mat / concept_sim_mat.std()
 
         score = (original_sim_mat - concept_sim_mat).pow(2).mean()
+
+        if self.normalize_distance:
+            score /= original_sim_mat.var()
 
         return score 
 

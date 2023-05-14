@@ -72,7 +72,11 @@ class MaskGenerator(nn.Module):
             inv_probs = 1 - total_mask
             total_mask_prob = torch.stack([inv_probs, total_mask], dim=-1)
 
+        #if self.training:
         total_mask_reparameterize = F.gumbel_softmax(torch.log(total_mask_prob + 1e-9), tau = self.tau, hard = self.use_ste)[...,1]
+        # else:
+        #     am = total_mask_prob.argmax(dim=-1)
+        #     total_mask_reparameterize = 
 
         return total_mask_reparameterize
 

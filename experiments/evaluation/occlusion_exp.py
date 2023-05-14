@@ -4,6 +4,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import trange
+from sklearn.metrics import f1_score, average_precision_score, roc_auc_score
 
 from txai.models.encoders.transformer_simple import TransformerMVTS
 from txai.utils.experimental import get_explainer
@@ -14,7 +15,8 @@ from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.models.modelv6_v2 import Modelv6_v2
 from txai.models.bc_model import BCExplainModel
 
-from txai.utils.evaluation import ground_truth_xai_eval
+from txai.utils.functional import transform_to_attn_mask
+from txai.utils.data.preprocess import process_Epilepsy, process_PAM
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -24,16 +26,20 @@ def get_model(args, X):
         model = TransformerMVTS(
             d_inp = X.shape[-1],
             max_len = X.shape[0],
-            n_classes = 4,
-            nlayers = 2,
-            nhead = 1,
-            trans_dim_feedforward = 64,
-            trans_dropout = 0.25,
+            n_classes = 2,
+            nlayers = 1,
+            trans_dim_feedforward = 16,
+            trans_dropout = 0.1,
             d_pe = 16,
+            norm_embedding = False,
         )
 
     elif args.dataset == 'pam':
-        pass
+        model = TransformerMVTS(
+            d_inp = X.shape[2],
+            max_len = X.shape[0],
+            n_classes = 8,
+        )
 
     elif args.dataset == 'boiler':
         pass
@@ -48,13 +54,19 @@ def main(args):
 
     # Switch on loading test data:
     if Dname == 'epilepsy':
-        pass
+        trainEpi, val, test = process_Epilepsy(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Epilepsy/')
+        test = (test.X, test.time, test.y)
+        trainX = trainEpi.X
     elif Dname == 'pam':
-        pass
+        trainPAM, val, test = process_PAM(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/PAMAP2data/', gethalf = True)
+        test = (test.X, test.time, test.y)
+        trainX = trainPAM.X
     elif Dname == 'boiler':
         pass
     else:
         raise ValueError('{} is not a valid dataset for stability'.format(Dname))
+
+    X, times, y = test
 
     T, B, d = X.shape
 
@@ -124,29 +136,62 @@ def main(args):
             generated_exps[:,i,:] = exp
 
     # Forward pass:
-    if args.exp_mehod == 'ours':
+    if args.exp_method == 'ours':
         # Make passes in batches:
         m = model.forward_pass_ge(src = X)
     else:
         # Perturb unimportant parts of the input:
         # Replace with baseline and attention mask:
+        featwise_mu = trainX.mean(dim=1)
+        featwise_std = trainX.std(dim=1)
+
+        baseline = torch.stack([torch.normal(mean = featwise_mu, std = featwise_std) for _ in range(X.shape[1])], dim = 1).to(X.device)
 
         # Get perturbation mask:
         perturb_mask = torch.zeros_like(X).bool()
         for i in range(B):
             exp = generated_exps[:,i,:]
-            perturb_mask[:,i,:] = (exp < exp.median()) # Masks in all values lower than the median (50th percentile)
+            thresh = torch.quantile(exp, args.lower_pct, interpolation='nearest')
+            if thresh.isnan().any():
+                print('thresh', thresh)
+            perturb_mask[:,i,:] = (exp > thresh) # Masks in all values lower than the median (50th percentile)
+            if args.upper_pct is not None:
+                upperthresh = torch.quantile(exp, args.lower_pct, interpolation='nearest')
+                perturb_mask[:,i,:] = (exp > thresh) & (exp < upperthresh)
         
-        perturb_mask = perturb_mask.float()
-        m = model
+        perturb_mask = perturb_mask.float().to(X.device)
+        Xperturb = (X * perturb_mask + (1 - perturb_mask) * baseline)
+        #print('x perturb', Xperturb.isnan().any())
+        seq_mask = (perturb_mask.sum(dim=-1) > 0).transpose(0,1).to(Xperturb.device) # New size: (B, T)
+        attn_mask = transform_to_attn_mask(seq_mask)
+        # print('attn mask', attn_mask.isnan().any())
+        # print('attn_mask', attn_mask)
 
+        # See how perturb mask and seqmask are similar:
+        mean_eq = (perturb_mask == seq_mask.transpose(0,1).unsqueeze(-1)).sum(dim=0).float().mean()
+        #print(f'Mean eq {mean_eq}, len = {perturb_mask.shape[0]}')
+
+        with torch.no_grad():
+            pred = model(Xperturb, times, attn_mask = attn_mask.float()) 
+
+    # Get evaluations:
+    pred_prob = pred.softmax(dim=-1).detach().clone().cpu()
+    yc = y.cpu().numpy()
+    one_hot_y = np.zeros((yc.shape[0], yc.max() + 1))
+    #print(yc)
+    for i, yi in enumerate(yc):
+        one_hot_y[i,yi] = 1
+    #print(one_hot_y)
+    auprc_val = average_precision_score(one_hot_y, pred_prob, average = 'macro')
+
+    auroc_val = roc_auc_score(one_hot_y, pred_prob, average = 'macro', multi_class = 'ovo')
 
     # Show all results:
     print('Results for {} explainer on {} with split={}'.format(args.exp_method, args.dataset, args.split_no))
-    for k, v in results_dict.items():
-        print('\t{} \t = {:.4f} +- {:.4f}'.format(k, np.mean(v), np.std(v) / np.sqrt(len(v))))
+    print('AUPRC = {:.4f}'.format(auprc_val))
+    print('AUROC = {:.4f}'.format(auroc_val))
 
-    return results_dict
+    return {'auroc': auroc_val, 'auprc': auprc_val}
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -156,7 +201,8 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type = str, help = 'only time series transformer right now')
     parser.add_argument('--org_v', action = 'store_true')
     parser.add_argument('--data_path', default="/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/", type = str, help = 'path to datasets root')
-    parser.add_argument('--baseline_strategy', default = 'attn')
+    parser.add_argument('--lower_pct', default = 0.9, type = float)
+    parser.add_argument('--upper_pct', default = None, type = float)
 
     args = parser.parse_args()
 

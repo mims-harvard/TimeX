@@ -106,7 +106,7 @@ def filter_prototypes(p_z, z_ref, dist = 'cosine', lower_bound = 5, get_count_di
         raise ValueError('{} metric not implemented'.format(dist))
 
     am = sims.argmax(dim=0)
-    print('am', am)
+    #print('am', am)
 
     # Find all inds that have at least lower_bound occurences:
     found = torch.unique(am)

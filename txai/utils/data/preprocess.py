@@ -228,7 +228,8 @@ def process_ECG(split_no = 1, device = None, base_path = ecg_base_path):
     return train_chunk, val_chunk, test_chunk
 
 mitecg_base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG'
-def process_MITECG(split_no = 1, device = None, hard_split = False, normalize = False, balance_classes = False, base_path = mitecg_base_path):
+def process_MITECG(split_no = 1, device = None, hard_split = False, normalize = False, exclude_pac_pvc = False, balance_classes = False, div_time = False, 
+        need_binarize = False, base_path = mitecg_base_path):
 
     split_path = 'split={}.pt'.format(split_no)
     idx_train, idx_val, idx_test = torch.load(os.path.join(base_path, split_path))
@@ -239,7 +240,7 @@ def process_MITECG(split_no = 1, device = None, hard_split = False, normalize = 
         # Make times on the fly:
         times = torch.zeros(X.shape[0],X.shape[1])
         for i in range(X.shape[1]):
-            times[:,i] = torch.arange(400)
+            times[:,i] = torch.arange(360)
 
         saliency = torch.load(os.path.join(base_path, 'all_data/saliency.pt'))
         
@@ -273,9 +274,31 @@ def process_MITECG(split_no = 1, device = None, hard_split = False, normalize = 
         # batch_maxes = Ptest.max(dim=0)[0].unsqueeze(0).repeat(samp_len, 1, 1)
         # Ptest = (Ptest -  batch_mins) / batch_maxes 
 
-        # time_train = time_train / 60.0
-        # time_val = time_val / 60.0
-        # time_test = time_test / 60.0
+    if div_time:
+        time_train = time_train / 60.0
+        time_val = time_val / 60.0
+        time_test = time_test / 60.0
+
+    if exclude_pac_pvc:
+        train_mask_in = (ytrain < 3)
+        Ptrain = Ptrain[:,train_mask_in,:]
+        time_train = time_train[:,train_mask_in]
+        ytrain = ytrain[train_mask_in]
+
+        val_mask_in = (yval < 3)
+        Pval = Pval[:,val_mask_in,:]
+        time_val = time_val[:,val_mask_in]
+        yval = yval[val_mask_in]
+
+        test_mask_in = (ytest < 3)
+        Ptest = Ptest[:,test_mask_in,:]
+        time_test = time_test[:,test_mask_in]
+        ytest = ytest[test_mask_in]
+    
+    if need_binarize:
+        ytrain = (ytrain > 0).long()
+        ytest = (ytest > 0).long()
+        yval = (yval > 0).long()
 
     if balance_classes:
         diff_to_mask = (ytrain == 0).sum() - (ytrain == 1).sum()
@@ -320,9 +343,10 @@ def process_MITECG(split_no = 1, device = None, hard_split = False, normalize = 
     print('Num after 0', (ytest == 0).sum())
     print('Num after 1', (ytest == 1).sum())
 
-    gt_exps = saliency.transpose(0,1).unsqueeze(-1)[:,idx_test,:]
-
     if hard_split:
+        gt_exps = saliency.transpose(0,1).unsqueeze(-1)[:,idx_test,:]
+        if exclude_pac_pvc:
+            gt_exps = gt_exps[:,test_mask_in,:]
         return train_chunk, val_chunk, test_chunk, gt_exps
     else:
         return train_chunk, val_chunk, test_chunk
@@ -428,7 +452,40 @@ def decomposition_statistics(pool_layer, X):
     return d
 
 boiler_base_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Boiler"
-def process_Boiler(split_no = 1, device = None, base_path = boiler_base_path):
+
+def process_Boiler(split_no = 1, device = None, base_path = boiler_base_path, normalize = False):
+    x_full = torch.load(os.path.join(base_path, 'xfull.pt')).to(device).float()
+    y_full = torch.load(os.path.join(base_path, 'yfull.pt')).to(device).long()
+    sfull = torch.load(os.path.join(base_path, 'sfull.pt')).to(device).float()
+    print('s', sfull.shape)
+    print('xfull', x_full.shape)
+    print('yfull', y_full.shape)
+    # exit()
+
+    T_full = torch.zeros(36, x_full.shape[1]).to(device)
+    for i in range(T_full.shape[1]):
+        T_full[:,i] = torch.arange(36)
+
+    idx_train, idx_val, idx_test = torch.load(os.path.join(base_path, 'split={}.pt'.format(split_no)))
+
+    train_d = [x_full[:,idx_train,:], T_full[:,idx_train], y_full[idx_train]]
+    val_d = [x_full[:,idx_val,:], T_full[:,idx_val], y_full[idx_val]]
+    test_d = [x_full[:,idx_test,:], T_full[:,idx_test], y_full[idx_test]]
+
+    # if normalize:
+    #     # Get mean, std of the whole sample from training data, apply to val, test:
+    #     mu = train_d[0].mean(dim=1).unsqueeze(1)
+    #     std = train_d[0].std(dim=1).unsqueeze(1).repeat(1,train_d[0].shape[1],1)
+    #     train_d[0] = (train_d[0] - mu.repeat(1,train_d[0].shape[1],1)) / std.repeat(1,train_d[0].shape[1],1)
+    #     val_d[0] = (val_d[0] - mu.repeat(1,val_d[0].shape[1],1)) / std.repeat(1,val_d[0].shape[1],1)
+    #     test_d[0] = (test_d[0] - mu.repeat(1,test_d[0].shape[1],1)) / std.repeat(1,test_d[0].shape[1],1)
+
+    stest = sfull[:,idx_test,:]
+
+    return train_d, val_d, test_d, stest
+
+
+def process_Boiler_OLD(split_no = 1, device = None, base_path = boiler_base_path):
     data = pd.read_csv(os.path.join(base_path, 'full.csv')).values
     data = data[:, 2:]  #remove time step
 

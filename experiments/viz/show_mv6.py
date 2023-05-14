@@ -2,7 +2,7 @@ import torch
 import argparse
 import numpy as np
 
-from txai.vis.visualize_mv6 import vis_concepts, visualize_explanations
+from txai.vis.visualize_mv6 import vis_concepts, visualize_explanations, visualize_explanations_new
 
 # Models:
 from txai.models.modelv6_v2 import Modelv6_v2
@@ -22,7 +22,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def main(model, test, class_num, heatmap = False, seed = None, topk = None):
 
-    visualize_explanations(model, test, show = False, class_num = class_num, heatmap = heatmap, topk = topk, seed = seed)
+    visualize_explanations_new(model, test, show = False, class_num = class_num, heatmap = heatmap, topk = topk, seed = seed)
     fig = plt.gcf()
     fig.set_size_inches(18.5, 10.5)
     #plt.savefig('mah_class3.png', dpi=200)
@@ -120,6 +120,12 @@ if __name__ == '__main__':
     elif D == 'mitecg_simple':
         _, _, test = process_MITECG(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Simple/')
         test = (test.X, test.time, test.y)
+    elif D == 'lowvardetect':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/LowVarDetect')
+        test = D['test']
+    elif D == 'mitecg_hard':
+        _, _, test, _ = process_MITECG(split_no = args.split_no, hard_split = True, need_binarize = True, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Hard/')
+        test = (test.X, test.time, test.y)
 
     # Loading:
     print('Loading model at {}'.format(args.model_path))
@@ -134,7 +140,7 @@ if __name__ == '__main__':
     model.to(device)
 
     # Evaluating:
-    eval_model(model, test)
+    #eval_model(model, test)
 
     # Vis concepts:
     #vis_concepts(model, test)

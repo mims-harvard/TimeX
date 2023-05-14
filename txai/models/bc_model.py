@@ -298,4 +298,5 @@ class BCExplainModel(nn.Module):
             'transformer_args': self.transformer_args,
             'ablation_parameters': self.ablation_parameters,
             'tau': self.tau,
+            'masktoken_stats': self.masktoken_stats,
         }

@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from txai.models.modelv6_v2 import Modelv6_v2
+from txai.vis.vis_saliency import vis_one_saliency, vis_one_saliency_univariate
 
 def get_x_mask_borders(mask):
     nz = mask.nonzero(as_tuple=True)[0].tolist()
@@ -122,6 +123,63 @@ def vis_exps_w_sim(X_query, mask_query, X_nearby_list, mask_nearby_list, show = 
 def logical_or_mask_along_explanations(total_mask):
     tmask = (total_mask.sum(dim=-1) > 0).float() # Effectively ORs along last dimension
     return tmask
+
+def visualize_explanations_new(model, test_tup, n = 3, class_num = None, show = True, heatmap = True, topk = None, seed = None):
+    '''
+    TODO: Rewrite
+
+    - Shows each extracted explanations along with importance scores for n samples
+    - TODO in future: aggregate multiple explanation types into one visualization
+
+    NOTE: Only works for regular time series
+    '''
+    # Quick function to visualize some samples in test_tup
+    # FOR NOW, assume only 2 masks, 2 concepts
+
+    X, times, y = test_tup
+
+    d_z = X.shape[-1]
+
+    choices = np.arange(X.shape[1])
+    if class_num is not None:
+        choices = choices[(y == class_num).cpu().numpy()]
+    np.random.seed(seed)
+    inds = torch.from_numpy(np.random.choice(choices, size = (n,), replace = False)).long()
+    #if isinstance(model, Modelv6_v2) or isinstance(model, Modelv6_v2_concepts):
+
+    sampX, samp_times, samp_y = X[:,inds,:], times[:,inds], y[inds]
+    x_range = torch.arange(sampX.shape[0])
+
+    model.eval()
+    with torch.no_grad():
+        out = model(sampX, samp_times, captum_input = False)
+        #pred, pred_mask, mask_in, ste_mask, smoother_stats, smooth_src = model(sampX, samp_times, captum_input = False)
+
+    pred, pred_mask = out['pred'], out['pred_mask']
+    mask_logits = out['mask_logits']
+
+    #smooth_src = torch.stack(out['smooth_src'], dim = 0) # Shape (N_c, T, B, d)
+    smooth_src = out['smooth_src'].unsqueeze(0)
+
+    pred = pred.softmax(dim=1).argmax(dim=1)
+    pred_mask = pred_mask.softmax(dim=1).argmax(dim=1)
+    print('pred', pred.shape)
+
+    title_format1 = 'y={:1d}, yhat={:1d}'
+
+    fig, ax = plt.subplots(d_z, n, sharex = True, squeeze = False)
+
+    for i in range(n):
+
+        if sampX.shape[-1] == 1:
+            # print('ML', mask_logits.shape)
+            # exit()
+            vis_one_saliency_univariate(sampX[:,i,:], mask_logits[i,:,:].transpose(0,1), ax = ax[0,i], fig = fig)
+        else:
+            vis_one_saliency(sampX[:,i,:], mask_logits[:,i,:], ax = ax, fig = fig, col_num = i)
+
+    if show:
+        plt.show()
 
 def visualize_explanations(model, test_tup, n = 3, class_num = None, show = True, heatmap = True, topk = None, seed = None):
     '''

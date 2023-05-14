@@ -79,6 +79,31 @@ def get_model(args, X):
             trans_dropout = 0.1,
             d_pe = 16,
         )
+    elif args.dataset == 'lowvardetect':
+        model = TransformerMVTS(
+            d_inp = X.shape[-1],
+            max_len = X.shape[0],
+            nlayers = 1,
+            n_classes = 4,
+            trans_dim_feedforward = 32,
+            trans_dropout = 0.25,
+            d_pe = 16,
+            stronger_clf_head = False,
+        )
+    elif args.dataset == 'mitecg_hard':
+        model = TransformerMVTS(
+            d_inp = X.shape[-1],
+            max_len = X.shape[0],
+            n_classes = 2,
+            nlayers = 1,
+            nhead = 1,
+            trans_dim_feedforward = 64,
+            trans_dropout = 0.1,
+            d_pe = 16,
+            stronger_clf_head = False,
+            pre_agg_transform = False,
+            norm_embedding = True
+        )
 
     return model
 
@@ -172,6 +197,12 @@ if __name__ == '__main__':
         test = (test.X, test.time, test.y)
     elif D == 'mitecg_simple':
         _, _, test = process_MITECG(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Simple/')
+        test = (test.X, test.time, test.y)
+    elif D == 'lowvardetect':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/LowVarDetect')
+        test = D['test']
+    elif D == 'mitecg_hard':
+        _, _, test, _ = process_MITECG(split_no = args.split_no, hard_split = True, need_binarize = True, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Hard/')
         test = (test.X, test.time, test.y)
 
     main(test, args)

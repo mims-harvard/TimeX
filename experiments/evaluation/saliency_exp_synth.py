@@ -11,7 +11,7 @@ from txai.models.encoders.simple import CNN, LSTM
 from txai.utils.experimental import get_explainer
 from txai.vis.vis_saliency import vis_one_saliency
 from txai.utils.data import process_Synth
-from txai.utils.data.preprocess import process_MITECG
+from txai.utils.data.preprocess import process_MITECG, process_Boiler
 from txai.synth_data.simple_spike import SpikeTrainDataset
 
 from txai.models.modelv6_v2 import Modelv6_v2
@@ -93,12 +93,37 @@ def get_model(args, X):
             model = TransformerMVTS(
                 d_inp = X.shape[-1],
                 max_len = X.shape[0],
-                nlayers = 2,
+                nlayers = 1,
                 n_classes = 2,
                 trans_dim_feedforward = 64,
                 trans_dropout = 0.1,
                 d_pe = 16,
-                stronger_clf_head = True,
+                stronger_clf_head = False,
+                norm_embedding = True,
+            )
+
+        elif args.dataset == 'lowvardetect':
+            model = TransformerMVTS(
+                d_inp = X.shape[-1],
+                max_len = X.shape[0],
+                nlayers = 1,
+                n_classes = 4,
+                trans_dim_feedforward = 32,
+                trans_dropout = 0.25,
+                d_pe = 16,
+                stronger_clf_head = False,
+            )
+
+        elif args.dataset == 'boiler':
+            model = TransformerMVTS(
+                d_inp = X.shape[-1],
+                max_len = X.shape[0],
+                nlayers = 1,
+                n_classes = 2,
+                trans_dim_feedforward = 64,
+                trans_dropout = 0.25,
+                d_pe = 16,
+                stronger_clf_head = False,
             )
 
     #model = torch.compile(model)
@@ -125,19 +150,30 @@ def main(args):
     elif Dname == 'scs_fixone':
         D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleFixOne')
     elif Dname == 'mitecg_hard':
-        D = process_MITECG(split_no = args.split_no, device = device, hard_split = True, base_path = Path(args.data_path) / 'MITECG-Hard')
+        D = process_MITECG(split_no = args.split_no, device = device, hard_split = True, need_binarize = True, exclude_pac_pvc = True, base_path = Path(args.data_path) / 'MITECG-Hard')
+    elif Dname == 'lowvardetect':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'LowVarDetect')
+    elif Dname == 'boiler':
+        D = process_Boiler(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'Boiler', 
+            normalize = True)
     
-    if Dname == 'mitecg_hard':
+    if (Dname == 'mitecg_hard') or (Dname == 'boiler'):
         _, _, test, gt_exps = D
     else:
         test = D['test']
 
-    if Dname == 'scs_better' or Dname == 'seqcombsingle' or Dname == 'scs_inline' or Dname == 'seqcomb_mv':
+    if Dname == 'scs_better' or Dname == 'seqcombsingle' or Dname == 'scs_inline' or Dname == 'seqcomb_mv' or Dname == 'lowvardetect':
         y = test[2]
         X = test[0][:,(y != 0),:]
         times = test[1][:,y != 0]
         gt_exps = D['gt_exps'][:,(y != 0).detach().cpu(),:]
         y = y[y != 0]
+    #elif Dname == 'lowvardetect':
+        # y = test[2]
+        # X = test[0][:,(y == 2),:]
+        # times = test[1][:,y == 2]
+        # gt_exps = D['gt_exps'][:,(y == 2).detach().cpu(),:]
+        # y = y[y == 2]
     elif Dname == 'mitecg_hard':
         X, times, y = test.X, test.time, test.y 
 
@@ -154,6 +190,15 @@ def main(args):
         print(gt_exps.shape)
         print((gt_exps.squeeze().sum(0) == 0).sum())
         #exit()
+    elif Dname == 'boiler':
+        X, times, y = test
+        mask = (y == 1).clone().cpu()
+        X = X[:,mask,:]
+        times = times[:,mask]
+        y = y[mask]
+        gt_exps = gt_exps[:,mask,:]
+        print('gt exps', gt_exps.shape)
+        #exit()
     else:
         X, times, y = test
         gt_exps = D['gt_exps']
@@ -161,7 +206,7 @@ def main(args):
 
     if args.exp_method == 'ours':
         sdict, config = torch.load(args.model_path)
-        print('Config', config)
+        #print('Config', config)
         if args.org_v:
             model = Modelv6_v2(**config)
         else:
@@ -233,6 +278,7 @@ def main(args):
         model.load_state_dict(torch.load(args.model_path))
         model.to(device)
         model.eval()
+        #model.train()
         if args.model_type == "lstm" and args.exp_method == "ig":
             # training mode necessary for cudnn RNN backward 
             model.train()

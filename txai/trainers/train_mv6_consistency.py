@@ -34,6 +34,7 @@ def train_mv6_consistency(
         beta_exp,
         beta_sim,
         train_tuple,
+        lam_label = 1.0,
         clip_norm = True,
         use_scheduler = False,
         wait_for_scheduler = 20,
@@ -45,6 +46,7 @@ def train_mv6_consistency(
         embedding_matching = True,
         opt_pred_mask = False, # If true, optimizes based on clf_criterion
         opt_pred_mask_to_full_pred = False,
+        batch_forward_size = None,
     ):
     '''
     Args:
@@ -92,7 +94,7 @@ def train_mv6_consistency(
                 clf_loss += clf_pred_loss
 
             # Can do very rough negative sampling here:
-            #neg_inds = basic_negative_sampling(X, ids, dataX, num_negatives = num_negatives)
+
             if sim_criterion is not None:
                 if label_matching and embedding_matching:
                     org_embeddings, conc_embeddings = out_dict['all_z']
@@ -109,7 +111,7 @@ def train_mv6_consistency(
                     pred_mask = out_dict['pred_mask']
                     label_sim_loss = sim_criterion[1](pred_mask, pred_org)
 
-                    sim_loss = emb_sim_loss + label_sim_loss
+                    sim_loss = emb_sim_loss + lam_label * label_sim_loss
                     label_sim_list.append(label_sim_loss.detach().clone().item())
                     emb_sim_list.append(emb_sim_loss.detach().clone().item())
 
@@ -166,8 +168,12 @@ def train_mv6_consistency(
         # Eval after every epoch
         # Call evaluation function:
         model.eval()
-        #f1, out = eval_mv4(val_tuple, model)
-        out = batch_forwards(model, val_tuple[0], val_tuple[1], batch_size = 64)
+        
+        if batch_forward_size is None:
+            f1, out = eval_mv4(val_tuple, model)
+        else:
+            out = batch_forwards(model, val_tuple[0], val_tuple[1], batch_size = 64)
+            f1 = 0
         #met = f1 # Copy for use below
         org_embeddings, conc_embeddings = out['all_z']
         #met = 2.0 - sim_criterion(org_embeddings, conc_embeddings)

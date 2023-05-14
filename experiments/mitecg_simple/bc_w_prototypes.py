@@ -25,7 +25,7 @@ pret_copy = False
 pret_equal = False
 print('Running variation pret_copy = {}, pret_equal = {}'.format(pret_copy, pret_equal))
 
-tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/mitecg_simple/models/transformer_split={}.pt"
+tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/mitecg_simple/models/transformer_new_split={}_USETHIS.pt"
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -91,9 +91,9 @@ for i in range(1, 6):
     for param in model.encoder_main.parameters():
         param.requires_grad = False
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-3, weight_decay = 0.001)
+    optimizer = torch.optim.AdamW(model.parameters(), lr = 5e-4, weight_decay = 0.001)
     
-    spath = 'models/bc_w50p_stop_split={}.pt'.format(i, pret_copy, pret_equal)
+    spath = 'models/bc_USE_split={}.pt'.format(i, pret_copy, pret_equal)
     print('saving at', spath)
 
     #model = torch.compile(model)

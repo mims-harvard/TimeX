@@ -128,16 +128,18 @@ def eval_mvts_transformer(test_tuple, model, batch_size = None, auprc = False, a
     f1 = f1_score(y.cpu().numpy(), pred.argmax(dim=1).detach().cpu().numpy(), average='macro')
 
     pred_prob = pred.softmax(dim=-1).detach().cpu().numpy()
-    if pred_prob.shape[-1] == 2:
-        pred_prob = pred_prob[:,1]
+    # if pred_prob.shape[-1] == 2:
+    #     pred_prob = pred_prob[:,1]
+
+    yc = y.cpu().numpy()
+    one_hot_y = np.zeros((yc.shape[0], yc.max() + 1))
+    for i, yi in enumerate(yc):
+        one_hot_y[i,yi] = 1
 
     if auprc:
-        yc = y.cpu().numpy()
-        one_hot_y = np.zeros((yc.shape[0], yc.max() + 1))
-        one_hot_y[:,yc] = 1
         auprc_val = average_precision_score(one_hot_y, pred_prob, average = 'macro')
     if auroc:
-        auroc_val = roc_auc_score(y.cpu().numpy(), pred_prob, average = 'macro', multi_class = 'ovr')
+        auroc_val = roc_auc_score(one_hot_y, pred_prob, average = 'macro', multi_class = 'ovr')
 
     if auprc and auroc:
         return f1, auprc_val, auroc_val

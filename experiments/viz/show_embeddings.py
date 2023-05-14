@@ -76,6 +76,11 @@ def main(model, test, args):
         pz_umap = m.transform(ptype_z_np)
         plt.scatter(pz_umap[:,0], pz_umap[:,1], alpha = 1.0, c = np.arange(pz_umap.shape[0]), cmap = 'viridis', marker = 's')
 
+    if args.savepath is not None:
+        Xnp = X.cpu().numpy()
+        ynp = y.cpu().numpy()
+        torch.save((Xnp, ynp, z_test_np, ptype_z_np), args.savepath)
+
     plt.show()
 
 def eval_model(model, test):
@@ -96,6 +101,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type = str)
     parser.add_argument('--split_no', type=int, default = 1)
     parser.add_argument('--org_v', action = 'store_true')
+    parser.add_argument('--savepath', type = str, default = None)
 
     args = parser.parse_args()
 
@@ -122,6 +128,12 @@ if __name__ == '__main__':
         test = (test.X, test.time, test.y)
     elif D == 'mitecg_simple':
         _, _, test = process_MITECG(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Simple/')
+        test = (test.X, test.time, test.y)
+    elif D == 'lowvardetect':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/LowVarDetect')
+        test = D['test']
+    elif D == 'mitecg_hard':
+        trainD, _, test, _ = process_MITECG(split_no = args.split_no, device = device, hard_split = True, exclude_pac_pvc = True, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Hard/')
         test = (test.X, test.time, test.y)
 
     # Loading:

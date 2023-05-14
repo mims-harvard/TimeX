@@ -11,7 +11,7 @@ from txai.utils.predictors import eval_mvts_transformer
 
 from txai.utils.data import process_Synth
 from txai.synth_data.simple_spike import SpikeTrainDataset
-from txai.utils.data.preprocess import process_MITECG
+from txai.utils.data.preprocess import process_MITECG, process_Epilepsy, process_PAM
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -67,10 +67,23 @@ def get_model(args, X):
         )
 
     elif args.dataset == 'pam':
-        pass
+        model = TransformerMVTS(
+            d_inp = X.shape[2],
+            max_len = X.shape[0],
+            n_classes = 8,
+        )
     
     elif args.dataset == 'epilepsy':
-        pass
+        model = TransformerMVTS(
+            d_inp = X.shape[-1],
+            max_len = X.shape[0],
+            n_classes = 2,
+            nlayers = 1,
+            trans_dim_feedforward = 16,
+            trans_dropout = 0.1,
+            d_pe = 16,
+            norm_embedding = False,
+        )
     
     elif args.dataset == 'boiler':
         pass
@@ -94,9 +107,11 @@ def main(args):
         D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombMV')
         test = D['test']
     elif Dname == 'pam':
-        pass
+        trainPAM, val, test = process_PAM(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/PAMAP2data/', gethalf = True)
+        test = (test.X, test.time, test.y)
     elif Dname == 'epilepsy':
-        pass
+        trainEpi, val, test = process_Epilepsy(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Epilepsy/')
+        test = (test.X, test.time, test.y)
     elif Dname == 'boiler':
         pass
     elif Dname == 'mitecg_hard':
@@ -120,8 +135,8 @@ def main(args):
     model.to(device)
     model.eval()
     
-    f1 = eval_mvts_transformer(test, model, batch_size = 32, auroc = False, auprc = False)
-    auprc, auroc = 0, 0
+    f1, auprc, auroc = eval_mvts_transformer(test, model, batch_size = 32, auroc = True, auprc = True)
+    #auprc, auroc = 0, 0
 
     # # Filter:
     # if Dname == 'mitecg_hard':

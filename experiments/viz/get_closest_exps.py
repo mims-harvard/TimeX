@@ -96,6 +96,8 @@ def get_model(args, X):
             trans_dropout = 0.1,
             d_pe = 16,
         )
+    #elif args.dataset == 'mitecg_hard':
+
 
     model.eval()
 
@@ -203,9 +205,6 @@ def main_sim(model, train, test, args):
     print('zq', zq.device)
     print('ztrain', ztrain.device)
 
-    # if args.exp_method == 'random_choice':
-    #     pass
-    # else:
     best_per_q = find_nearest_explanations(zq, ztrain, n_exps_per_q = args.nclose)
 
     if args.random:
@@ -231,6 +230,10 @@ def main_sim(model, train, test, args):
     if args.get_ptypes:
         vis_sim_to_ptypes(X_nearby_list = Xn_list, mask_nearby_list = mn_list,
             y_nearby_list = yn_list, show = True)
+
+        if args.savepath is not None:
+            torch.save((Xn_list, mn_list, yn_list), args.savepath)
+        
     else:
         vis_exps_w_sim(X_query = Xq, mask_query = mq, 
             X_nearby_list = Xn_list, mask_nearby_list = mn_list,
@@ -335,6 +338,7 @@ if __name__ == '__main__':
     parser.add_argument('--get_ptypes', action = 'store_true')
     parser.add_argument('--random', action = 'store_true', help = 'Picks random samples to visualize')
     parser.add_argument('--gettop', action = 'store_true')
+    parser.add_argument('--savepath', type = str, default = None)
 
     args = parser.parse_args()
 
@@ -367,6 +371,10 @@ if __name__ == '__main__':
         test = (test.X, test.time, test.y)
     elif D == 'mitecg_simple':
         trainD, _, test = process_MITECG(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Simple/')
+        train = (trainD.X, trainD.time, trainD.y)
+        test = (test.X, test.time, test.y)
+    elif D == 'mitecg_hard':
+        trainD, _, test, _ = process_MITECG(split_no = args.split_no, device = device, hard_split = True, exclude_pac_pvc = True, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Hard/')
         train = (trainD.X, trainD.time, trainD.y)
         test = (test.X, test.time, test.y)
 
