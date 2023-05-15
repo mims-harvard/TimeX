@@ -9,6 +9,7 @@ from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 
 from txai.utils.data import process_Synth
+from txai.utils.data.preprocess import process_MITECG
 from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.baselines.WinIT.winit.explainer.winitexplainers import WinITExplainer
 from txai.baselines.WinIT.winit.utils import aggregate_scores
@@ -139,22 +140,36 @@ def train_generator(args):
         D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'FreqShapeUD')
     elif Dname == 'seqcomb_mv':
         D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombMV')
-    
+    elif Dname == 'mitecg_hard':
+        D = process_MITECG(split_no = args.split_no, device = device, hard_split = True, need_binarize = True, exclude_pac_pvc = True, base_path = Path(args.data_path) / 'MITECG-Hard')
+    elif Dname == 'lowvardetect':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'LowVarDetect')
+
     winit_path = Path(args.models_path) / f"winit_split={args.split_no}/"
+
+
+    if Dname == "mitecg_hard":
+        # make ecg data the same format as everything else
+        train_loader, val, test, _ = D
+        train_loader = [(train_loader.X[:, i], train_loader.time[:, i], train_loader.y[i]) for i in range(train_loader.X.shape[1])]
+        val = (val.X, val.time, val.y)
+        test = (test.X, test.time, test.y)
+    else:
+        train_loader, val, test = D["train_loader"], D["val"], D["test"]
 
     winit = WinITExplainer(
         device, 
-        num_features=D["test"][0].shape[-1], 
+        num_features=test[0].shape[-1], 
         data_name=Dname, 
         path=winit_path
     )
 
     # NOTE: WinIT code expects time series of shape [n, features, time]
-    train_input = torch.stack([D["train_loader"][i][0].permute(1, 0) for i in range(len(D["train_loader"]))])
-    train_label = torch.stack([D["train_loader"][i][2] for i in range(len(D["train_loader"]))])
+    train_input = torch.stack([train_loader[i][0].permute(1, 0) for i in range(len(train_loader))])
+    train_label = torch.stack([train_loader[i][2] for i in range(len(train_loader))])
     train_ds = TensorDataset(train_input, train_label)
     # time, n, features -> n, features, time
-    val_ds = TensorDataset(D["val"][0].permute(1, 2, 0), D["val"][2])
+    val_ds = TensorDataset(val[0].permute(1, 2, 0), val[2])
     train_dl = DataLoader(train_ds, batch_size=256, shuffle=True)
     val_dl = DataLoader(val_ds, batch_size=256)
     print("training generators...")
@@ -172,8 +187,9 @@ def train_generator(args):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--dataset', type = str)
-    parser.add_argument('--split_no', default = 1)
     parser.add_argument('--models_path', type = str, help = 'path to store models')
     parser.add_argument('--data_path', default="/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/", type = str, help = 'path to datasets root')
     args = parser.parse_args()
-    train_generator(args)
+    for split_no in range(1, 6):
+        args.split_no = split_no
+        train_generator(args)
