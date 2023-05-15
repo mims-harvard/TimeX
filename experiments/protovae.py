@@ -4,7 +4,7 @@ import copy
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, f1_score, average_precision_score
 from torch import nn
 
 from txai.utils.data import EpiDataset
@@ -106,6 +106,7 @@ class Model(nn.Module):
         self.ones = nn.Parameter(
             torch.ones(self.n_prototypes, self.dim), requires_grad=False
         )
+        self._initialize_weights()
 
     def distance_2_similarity(self, distances):
         return torch.log((distances + 1) / (distances + 1e-4))
@@ -181,10 +182,11 @@ class Model(nn.Module):
 
         ortho_loss = self.ortho_loss()
 
+        # ce_loss = F.cross_entropy(out, y, weight=torch.tensor([1, 0.1]).cuda())
         ce_loss = F.cross_entropy(out, y)
         recons_loss = F.mse_loss(decoded, x)
 
-        loss = 1e2 * ce_loss + recons_loss + kl_loss + ortho_loss
+        loss = ce_loss + recons_loss + kl_loss + ortho_loss
 
         return {
             "predictions": out,
@@ -194,6 +196,55 @@ class Model(nn.Module):
             "loss_reconstruction": recons_loss,
             "loss_kl": kl_loss,
         }, loss
+
+    def set_last_layer_incorrect_connection(self, incorrect_strength):
+        positive_one_weights_locations = torch.t(self.prototype_class_identity)
+        negative_one_weights_locations = 1 - positive_one_weights_locations
+
+        correct_class_connection = 1
+        incorrect_class_connection = incorrect_strength
+        self.final.weight.data.copy_(
+            correct_class_connection * positive_one_weights_locations
+            + incorrect_class_connection * negative_one_weights_locations)
+
+    def _initialize_weights(self):
+        for m in self.encoder.modules():
+            if isinstance(m, nn.Conv1d):
+                nn.init.uniform_(m.weight, -0.08, 0.08)
+ 
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+ 
+            elif isinstance(m, nn.Linear):
+                nn.init.uniform_(m.weight, -0.08, 0.08)
+ 
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+ 
+        for m in self.decoder.modules():
+            if isinstance(m, nn.Conv1d):
+                nn.init.uniform_(m.weight, -0.08, 0.08)
+ 
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+ 
+            # if isinstance(m, nn.Conv1d):
+            #     nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+ 
+            #     if m.bias is not None:
+            #         nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.uniform_(m.weight, -0.08, 0.08)
+ 
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+ 
+        self.set_last_layer_incorrect_connection(incorrect_strength=-0.5)
+
+
+
+
+
 
 
 # run with `python -m pytest protovae.py`
@@ -221,13 +272,34 @@ def test_model():
     assert out["predictions"].shape == (8, 4)
     assert out["reconstruction"].shape == (8, seq_len, 1)
 
+@torch.no_grad()
+def plot_prototypes(model, save_path):
+    fig, axs = plt.subplots(int(model.n_prototypes_per_class), int(model.n_classes), figsize=(10, 12), sharey=True)
+    for k in range(model.n_classes):
+        p_k = model.prototype_vectors[
+            k * model.n_prototypes_per_class : (k + 1) * model.n_prototypes_per_class,
+            :,
+        ]
+        for j in range(model.n_prototypes_per_class):
+            decoded_proto = model.decoder(p_k[j].unsqueeze(0))[0]
+            if j == 0:  # set title on first example
+                axs[j, k].set_title(f"class={k}")
+            axs[j, k].plot(decoded_proto.squeeze().cpu().numpy())
+            # axs[i, j].axis("off")
+            axs[j, k].xaxis.set_ticks([])
+            axs[j, k].yaxis.set_ticks([])
+
+    fig.suptitle("Prototypes")
+    fig.tight_layout()
+    plt.savefig(save_path)
+    plt.close("all")
 
 def train(
-    epochs=100,
+    epochs=200,
     device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
     n_prototypes=6,
     base_path="datasets/drive/datasets_and_models/Epilepsy",
-    early_stop=True,
+    early_stop=False,
 ):
     torch.manual_seed(0)
 
@@ -239,11 +311,18 @@ def train(
     valid_ds = (val_epi.X.permute(1, 0, 2), val_epi.y)
     test_ds = (test_epi.X.permute(1, 0, 2), test_epi.y)
 
+    # plot histogram of data by class
+    plt.hist(test_ds[0][test_ds[1] == 0].flatten().cpu().numpy(), label="class=0", bins=100, alpha=0.5, density=True)
+    plt.hist(test_ds[0][test_ds[1] == 1].flatten().cpu().numpy(), label="class=1", bins=100, alpha=0.5, density=True)
+    plt.legend()
+    plt.savefig("figures/epi_hist.png")
+    plt.close("all")
+
     model = Model(
         channels=1, dim=128, n_classes=2, n_prototypes=n_prototypes
     ).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     @torch.no_grad()
     def test(dataset, prefix="val_"):
@@ -252,11 +331,13 @@ def train(
         output, _ = model(x.float().to(device), y.long().to(device), train=False)
         preds = F.softmax(output["predictions"], dim=-1).cpu()
         acc = accuracy_score(y.cpu().numpy(), preds.argmax(-1).numpy())
-        f1 = f1_score(y.cpu().numpy(), preds.argmax(-1).numpy(), average="macro")
+        f1 = f1_score(y.cpu().numpy(), preds.argmax(-1), average="macro")
+        ap = average_precision_score(y.cpu().numpy(), preds.numpy()[:, 1])
         return dict_prefix(
             {
                 "acc": acc,
                 "f1": f1,
+                "ap": f1,
                 "loss_ortho": output["loss_ortho"].item(),
                 "loss_classification": output["loss_classification"].item(),
                 "loss_kl": output["loss_kl"].item(),
@@ -284,6 +365,12 @@ def train(
         if metrics["val_f1"] > best_acc:
             best_params = copy.deepcopy(model.state_dict())
             best_acc = metrics["val_f1"]
+            figure_path = f"figures/epilepsy_best_prototypes.png"
+            plot_prototypes(model, figure_path)
+
+        if epoch % 100 == 0:
+            figure_path = f"figures/epilepsy_epoch{epoch}_prototypes.png"
+            plot_prototypes(model, figure_path)
 
     if early_stop:
         model.load_state_dict(best_params)
@@ -294,41 +381,21 @@ def train(
     print(dict_to_string(metrics))
 
     # plot examples of reconstructions
-    n_examples = 5
+    n_examples = 10
     for i in range(n_examples):
         plt.plot(metrics["test_x"][i, :, 0], label="x")
         plt.plot(metrics["test_reconstruction"][i, :, 0], label="reconstruction")
         plt.legend()
-        plt.title(f"Epilepsy: Test[{i}] ProtoVAE")
+        plt.title(f"Epilepsy: Test[{i}] ProtoVAE, label={test_ds[1][i]}")
         plt.savefig(f"figures/protovae_eg_{i}_epilepsy.png")
         plt.close("all")
 
-    fig, axs = plt.subplots(int(model.n_prototypes_per_class), int(model.n_classes), figsize=(10, 12))
 
-    with torch.no_grad():
-        for k in range(model.n_classes):
-            p_k = model.prototype_vectors[
-                k * model.n_prototypes_per_class : (k + 1) * model.n_prototypes_per_class,
-                :,
-            ]
-            for j in range(model.n_prototypes_per_class):
-                decoded_proto = model.decoder(p_k[j].unsqueeze(0))[0]
-                if j == 0:  # set title on first example
-                    axs[j, k].set_title(f"class={k}")
-                axs[j, k].plot(decoded_proto.squeeze().cpu().numpy())
-                # axs[i, j].axis("off")
-                axs[j, k].xaxis.set_ticks([])
-                axs[j, k].yaxis.set_ticks([])
-
-        fig.suptitle("Prototypes")
-        fig.tight_layout()
-        plt.savefig(f"figures/prototypes_epilepsy.png")
-        plt.close("all")
         
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=500)
+    parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--n_prototypes", type=int, default=16)
     parser.add_argument("--data_path", default="datasets/drive/datasets_and_models/Epilepsy/")
     args = parser.parse_args()
