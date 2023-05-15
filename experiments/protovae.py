@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from pathlib import Path
 import copy
 
 import matplotlib.pyplot as plt
@@ -9,6 +10,7 @@ from torch import nn
 
 from txai.utils.data import EpiDataset
 from txai.utils.data.preprocess import process_Epilepsy
+from txai.utils.data.preprocess import process_MITECG
 
 def dict_prefix(d, prefix=""):
     """add prefix to all dictionary keys"""
@@ -52,12 +54,12 @@ class PosLinear(nn.Module):
         return torch.matmul(x, torch.exp(self.weight)) + self.bias
 
 class Decoder(nn.Module):
-    def __init__(self, in_dim, out_channels=1, dim=128):
+    def __init__(self, in_dim, seq_len, out_channels=1, dim=128):
         super().__init__()
         self.dim = dim
-        # original length of 178, with 3 stride=2 max pools, so this should be
+        # original length with 3 stride=2 max pools, so this should be
         # the length of representations before the adaptive average pool
-        self.length = 178 // 2 // 2 // 2
+        self.length = seq_len // 2 // 2 // 2
         self.adapt_inv = nn.Linear(in_dim, dim * self.length)
 
         self.decoder = nn.Sequential(
@@ -68,7 +70,7 @@ class Decoder(nn.Module):
             nn.Conv1d(dim, dim, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Upsample(scale_factor=2),
-            nn.Conv1d(dim, out_channels, kernel_size=7, padding=4),
+            nn.Conv1d(dim, out_channels, kernel_size=7, padding=(4 if seq_len==178 else 3)),
         )
 
     def forward(self, x):
@@ -81,7 +83,7 @@ class Decoder(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, channels, dim, n_classes, n_prototypes):
+    def __init__(self, channels, dim, n_classes, n_prototypes, seq_len):
         super().__init__()
         self.dim = dim
         assert (
@@ -90,7 +92,7 @@ class Model(nn.Module):
         self.n_classes = n_classes
         self.n_prototypes = n_prototypes
         self.encoder = Encoder(channels, dim)
-        self.decoder = Decoder(dim, channels)
+        self.decoder = Decoder(dim, seq_len, channels)
         self.final = nn.Linear(self.n_prototypes, self.n_classes, bias=False)
 
         prototype_class_identity = torch.zeros(self.n_prototypes, self.n_classes)
@@ -182,11 +184,10 @@ class Model(nn.Module):
 
         ortho_loss = self.ortho_loss()
 
-        # ce_loss = F.cross_entropy(out, y, weight=torch.tensor([1, 0.1]).cuda())
         ce_loss = F.cross_entropy(out, y)
         recons_loss = F.mse_loss(decoded, x)
 
-        loss = ce_loss + recons_loss + kl_loss + ortho_loss
+        loss = 1e1 * ce_loss + recons_loss + kl_loss + ortho_loss
 
         return {
             "predictions": out,
@@ -242,18 +243,22 @@ class Model(nn.Module):
         self.set_last_layer_incorrect_connection(incorrect_strength=-0.5)
 
 
-
-
-
-
-
 # run with `python -m pytest protovae.py`
 def test_encoder_decoder():
     seq_len = 178
     dim = 16
-
     encoder = Encoder(in_channels=1, dim=dim)
-    decoder = Decoder(in_dim=dim, out_channels=1)
+    decoder = Decoder(in_dim=dim, seq_len=seq_len, out_channels=1)
+    x = torch.randn(8, seq_len, 1)  # batch, seq, channels
+    features = encoder(x)
+    mu, std = features[:, dim:], features[:, :dim]
+    x_hat = decoder(mu)
+    assert x_hat.shape == x.shape
+
+    seq_len = 360
+    dim = 16
+    encoder = Encoder(in_channels=1, dim=dim)
+    decoder = Decoder(in_dim=dim, seq_len=seq_len, out_channels=1)
     x = torch.randn(8, seq_len, 1)  # batch, seq, channels
     features = encoder(x)
     mu, std = features[:, dim:], features[:, :dim]
@@ -267,35 +272,44 @@ def test_model():
 
     x = torch.randn(8, seq_len, 1)  # batch, seq, channels
     y = torch.randint(0, 3, size=(8,))
-    model = Model(channels=1, dim=16, n_classes=4, n_prototypes=40)
+    model = Model(channels=1, seq_len=seq_len, dim=16, n_classes=4, n_prototypes=40)
     out, loss = model(x, y)
     assert out["predictions"].shape == (8, 4)
     assert out["reconstruction"].shape == (8, seq_len, 1)
 
 @torch.no_grad()
-def plot_prototypes(model, save_path):
+def plot_prototypes(model, img_path, pt_path):
     fig, axs = plt.subplots(int(model.n_prototypes_per_class), int(model.n_classes), figsize=(10, 12), sharey=True)
+    protos = []
     for k in range(model.n_classes):
         p_k = model.prototype_vectors[
             k * model.n_prototypes_per_class : (k + 1) * model.n_prototypes_per_class,
             :,
         ]
+        class_protos = []
         for j in range(model.n_prototypes_per_class):
-            decoded_proto = model.decoder(p_k[j].unsqueeze(0))[0]
+            decoded_proto = model.decoder(p_k[j].unsqueeze(0))[0].cpu()
             if j == 0:  # set title on first example
                 axs[j, k].set_title(f"class={k}")
-            axs[j, k].plot(decoded_proto.squeeze().cpu().numpy())
+            axs[j, k].plot(decoded_proto.squeeze().numpy())
             # axs[i, j].axis("off")
             axs[j, k].xaxis.set_ticks([])
             axs[j, k].yaxis.set_ticks([])
+            class_protos.append(decoded_proto)
+
+        class_protos = torch.stack(class_protos, dim=0) 
+        protos.append(class_protos)
+    protos = torch.stack(protos)
+    torch.save(protos, pt_path)
 
     fig.suptitle("Prototypes")
     fig.tight_layout()
-    plt.savefig(save_path)
+    plt.savefig(img_path)
     plt.close("all")
 
 def train(
     epochs=200,
+    dataset="epilepsy",
     device=torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu"),
     n_prototypes=6,
     base_path="datasets/drive/datasets_and_models/Epilepsy",
@@ -303,23 +317,35 @@ def train(
 ):
     torch.manual_seed(0)
 
-    train_epi, val_epi, test_epi = process_Epilepsy(split_no=1, device=device, base_path=base_path)
+    if dataset == "epilepsy":
+        train_epi, val_epi, test_epi = process_Epilepsy(split_no=1, device=device, base_path=Path(base_path) / "Epilepsy")
+    elif dataset == "ecg":
+        train_epi, val_epi, test_epi, _ = process_MITECG(
+            split_no=1,
+            device= device, hard_split=True,
+            normalize = False, 
+            balance_classes=False,
+            div_time=False,
+            need_binarize=True,
+            exclude_pac_pvc=True,
+            base_path = Path(base_path)/ "MITECG-Hard"
+        )
+
     train_dataset = EpiDataset(train_epi.X, train_epi.time, train_epi.y)
     train_dl = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
-
     # time, batch, channels -> batch, time, channels
     valid_ds = (val_epi.X.permute(1, 0, 2), val_epi.y)
     test_ds = (test_epi.X.permute(1, 0, 2), test_epi.y)
 
     # plot histogram of data by class
-    plt.hist(test_ds[0][test_ds[1] == 0].flatten().cpu().numpy(), label="class=0", bins=100, alpha=0.5, density=True)
-    plt.hist(test_ds[0][test_ds[1] == 1].flatten().cpu().numpy(), label="class=1", bins=100, alpha=0.5, density=True)
-    plt.legend()
-    plt.savefig("figures/epi_hist.png")
-    plt.close("all")
+    # plt.hist(test_ds[0][test_ds[1] == 0].flatten().cpu().numpy(), label="class=0", bins=100, alpha=0.5, density=True)
+    # plt.hist(test_ds[0][test_ds[1] == 1].flatten().cpu().numpy(), label="class=1", bins=100, alpha=0.5, density=True)
+    # plt.legend()
+    # plt.savefig("figures/epi_hist.png")
+    # plt.close("all")
 
     model = Model(
-        channels=1, dim=128, n_classes=2, n_prototypes=n_prototypes
+        channels=1, seq_len=valid_ds[0].shape[1], dim=128, n_classes=2, n_prototypes=n_prototypes
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
@@ -365,17 +391,19 @@ def train(
         if metrics["val_f1"] > best_acc:
             best_params = copy.deepcopy(model.state_dict())
             best_acc = metrics["val_f1"]
-            figure_path = f"figures/epilepsy_best_prototypes.png"
-            plot_prototypes(model, figure_path)
+            figure_path = f"figures/{dataset}_best_prototypes.png"
+            pt_path = f"figures/{dataset}_best_prototypes.pt"
+            plot_prototypes(model, figure_path, pt_path)
 
         if epoch % 100 == 0:
-            figure_path = f"figures/epilepsy_epoch{epoch}_prototypes.png"
-            plot_prototypes(model, figure_path)
+            figure_path = f"figures/{dataset}_epoch{epoch}_prototypes.png"
+            pt_path = f"figures/{dataset}_epoch{epoch}_prototypes.pt"
+            plot_prototypes(model, figure_path, pt_path)
 
     if early_stop:
         model.load_state_dict(best_params)
 
-    torch.save(model.state_dict(), f"models/epilepsy_protovae_prototypes={n_prototypes}.pt")
+    torch.save(model.state_dict(), f"models/{dataset}_protovae_prototypes={n_prototypes}.pt")
 
     metrics = test(test_ds, prefix="test_")
     print(dict_to_string(metrics))
@@ -386,8 +414,8 @@ def train(
         plt.plot(metrics["test_x"][i, :, 0], label="x")
         plt.plot(metrics["test_reconstruction"][i, :, 0], label="reconstruction")
         plt.legend()
-        plt.title(f"Epilepsy: Test[{i}] ProtoVAE, label={test_ds[1][i]}")
-        plt.savefig(f"figures/protovae_eg_{i}_epilepsy.png")
+        plt.title(f"{dataset}: Test[{i}] ProtoVAE, label={test_ds[1][i]}")
+        plt.savefig(f"figures/protovae_eg_{i}_{dataset}.png")
         plt.close("all")
 
 
@@ -395,12 +423,14 @@ def train(
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=200)
+    parser.add_argument("--epochs", type=int, default=2000)
     parser.add_argument("--n_prototypes", type=int, default=16)
-    parser.add_argument("--data_path", default="datasets/drive/datasets_and_models/Epilepsy/")
+    parser.add_argument("--data_path", default="datasets/drive/datasets_and_models/")
+    parser.add_argument("--dataset", choices=["ecg", "epilepsy"])
     args = parser.parse_args()
     train(
         epochs=args.epochs,
         n_prototypes=args.n_prototypes,
         base_path=args.data_path,
+        dataset=args.dataset,
     )
