@@ -67,7 +67,7 @@ def main(args):
 
     targs = transformer_default_args
 
-    for i in range(1, 6):
+    for i in range(2, 6):
         trainB, val, test = process_Boiler_OLD(split_no = i, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Boiler/')
         # Output of above are chunks
         train_dataset = DatasetwInds(*trainB)

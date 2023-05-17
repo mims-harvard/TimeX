@@ -70,7 +70,7 @@ def main(args):
     )
 
     sim_criterion_label = LabelConsistencyLoss()
-    sim_criterion_cons = EmbedConsistencyLoss()
+    sim_criterion_cons = EmbedConsistencyLoss(normalize_distance = True)
 
     if args.no_la:
         sim_criterion = sim_criterion_cons
@@ -82,7 +82,7 @@ def main(args):
 
     targs = transformer_default_args
 
-    for i in range(1, 6):
+    for i in range(2, 6):
         trainPAM, val, test = process_PAM(split_no = i, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/PAMAP2data/', gethalf = True)
         # Output of above are chunks
         train_dataset = DatasetwInds(trainPAM.X, trainPAM.time, trainPAM.y)
@@ -105,7 +105,7 @@ def main(args):
 
         loss_weight_dict = {
             'gsat': 1.0,
-            'connect': 2.0
+            'connect': 0.0
         }
 
         targs['norm_embedding'] = False
@@ -115,7 +115,7 @@ def main(args):
             max_len = val[0].shape[0],
             n_classes = 8,
             n_prototypes = 50,
-            gsat_r = 0.5,
+            gsat_r = 0.1,
             transformer_args = targs,
             ablation_parameters = abl_params,
             loss_weight_dict = loss_weight_dict,
@@ -133,7 +133,7 @@ def main(args):
         for param in model.encoder_main.parameters():
             param.requires_grad = False
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-4, weight_decay = 0.001)
+        optimizer = torch.optim.AdamW(model.parameters(), lr = 2e-3, weight_decay = 0.001)
         
         model_suffix = naming_convention(args)
         spath = os.path.join('models', model_suffix)
@@ -149,14 +149,14 @@ def main(args):
             beta_exp = 2.0,
             beta_sim = 1.0,
             val_tuple = val, 
-            num_epochs = 50,
+            num_epochs = 100,
             save_path = spath,
             train_tuple = (trainPAM.X.to(device), trainPAM.time.to(device), trainPAM.y.to(device)),
             early_stopping = True,
             selection_criterion = selection_criterion,
             label_matching = True,
             embedding_matching = True,
-            use_scheduler = True
+            use_scheduler = False
         )
 
         sdict, config = torch.load(spath)

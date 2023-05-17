@@ -12,7 +12,7 @@ from txai.utils.predictors.eval import eval_mv4
 from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.data.datasets import DatasetwInds
 from txai.utils.predictors.loss_cl import *
-from txai.utils.predictors.select_models import simloss_on_val_wboth
+from txai.utils.predictors.select_models import simloss_on_val_wboth, simloss_on_val_laonly, simloss_on_val_cononly, cosine_sim_for_simclr
 from txai.utils.data.preprocess import process_MITECG
 
 import warnings
@@ -35,7 +35,7 @@ def naming_convention(args):
     elif args.no_con:
         name = "bc_nocon_split={}.pt"
     else:
-        name = 'bc_full_exc_split={}.pt'
+        name = 'bc_full_retry_split={}.pt'
     
     if args.lam != 1.0:
         # Not included in ablation parameters or other, so name it;
@@ -57,19 +57,37 @@ def main(args):
     )
 
     sim_criterion_label = LabelConsistencyLoss()
-    sim_criterion_cons = EmbedConsistencyLoss(normalize_distance = False)
+
+    if args.simclr:
+        sim_criterion_cons = SimCLRLoss()
+        sc_expand_args = {'simclr_training':True, 'num_negatives_simclr':32, 'max_batch_size_simclr_negs': 32}
+    else:
+        sim_criterion_cons = EmbedConsistencyLoss()
+        sc_expand_args = {'simclr_training':False, 'num_negatives_simclr':64, 'max_batch_size_simclr_negs': None}
 
     if args.no_la:
         sim_criterion = sim_criterion_cons
+        selection_criterion = simloss_on_val_cononly(sim_criterion)
+        label_matching = False
+        embedding_matching = True
     elif args.no_con:
         sim_criterion = sim_criterion_label
+        selection_criterion = simloss_on_val_laonly(sim_criterion)
+        label_matching = True
+        embedding_matching = False
     else: # Regular
         sim_criterion = [sim_criterion_cons, sim_criterion_label]
-        selection_criterion = simloss_on_val_wboth(sim_criterion, lam = 1.0)
+        if args.simclr:
+            selection_criterion = simloss_on_val_wboth([cosine_sim_for_simclr, sim_criterion_label], lam = 1.0)
+        else:
+            selection_criterion = simloss_on_val_wboth(sim_criterion, lam = 1.0)
+        #selection_criterion = simloss_on_val_wboth(sim_criterion, lam = 1.0)
+        label_matching = True
+        embedding_matching = True
 
     targs = transformer_default_args
 
-    for i in range(4, 5):
+    for i in range(1, 6):
         trainEpi, val, test, _ = process_MITECG(split_no = i, device = device, hard_split = True, need_binarize = True,
             base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Hard/')
         train_dataset = DatasetwInds(trainEpi.X, trainEpi.time, trainEpi.y)
@@ -122,7 +140,7 @@ def main(args):
         for param in model.encoder_main.parameters():
             param.requires_grad = False
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-4, weight_decay = 0.0001)
+        optimizer = torch.optim.AdamW(model.parameters(), lr = 5e-4, weight_decay = 0.0001)
         
         model_suffix = naming_convention(args)
         spath = os.path.join('models', model_suffix)
@@ -138,23 +156,24 @@ def main(args):
             beta_exp = 2.0,
             beta_sim = 1.0,
             val_tuple = val, 
-            num_epochs = 10,
+            num_epochs = 5,
             save_path = spath,
             train_tuple = (trainEpi.X.to(device), trainEpi.time.to(device), trainEpi.y.to(device)),
             early_stopping = True,
             selection_criterion = selection_criterion,
-            label_matching = True,
-            embedding_matching = True,
+            label_matching = label_matching,
+            embedding_matching = embedding_matching,
             use_scheduler = False,
             batch_forward_size = 64,
+            **sc_expand_args
         )
 
         sdict, config = torch.load(spath)
 
         model.load_state_dict(sdict)
 
-        f1, _ = eval_mv4(test, model)
-        print('Test F1: {:.4f}'.format(f1))
+        #f1, _ = eval_mv4(test, model)
+        #print('Test F1: {:.4f}'.format(f1))
 
 if __name__ == '__main__':
 

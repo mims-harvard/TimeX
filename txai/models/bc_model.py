@@ -9,6 +9,7 @@ from txai.models.mask_generators.maskgen import MaskGenerator
 from txai.utils.predictors.loss import GSATLoss, ConnectLoss
 from txai.utils.predictors.loss_smoother_stats import *
 from txai.utils.functional import js_divergence, stratified_sample
+from txai.models.encoders.simple import CNN, LSTM
 
 transformer_default_args = {
     'enc_dropout': None,
@@ -44,6 +45,7 @@ class AblationParameters:
     # Prototypes:
     ptype_assimilation: bool = field(default = False)
     side_assimilation: bool = field(default = False)
+    archtype: str = field(default = 'transformer')
 
 default_abl = AblationParameters() # Class based on only default params
 
@@ -84,15 +86,29 @@ class BCExplainModel(nn.Module):
         self.ablation_parameters = ablation_parameters
         self.loss_weight_dict = loss_weight_dict
 
-        self.d_z = (self.d_inp + self.d_pe)
+        
         
         # Holds main encoder:
-        self.encoder_main = TransformerMVTS(
-            d_inp = d_inp,  # Dimension of input from samples (must be constant)
-            max_len = max_len, # Max length of any sample to be fed into model
-            n_classes = self.n_classes, # Number of classes for classification head
-            **self.transformer_args
-        )
+        if self.ablation_parameters.archtype == 'transformer':
+            self.encoder_main = TransformerMVTS(
+                d_inp = d_inp,  # Dimension of input from samples (must be constant)
+                max_len = max_len, # Max length of any sample to be fed into model
+                n_classes = self.n_classes, # Number of classes for classification head
+                **self.transformer_args
+            )
+            self.d_z = (self.d_inp + self.d_pe)
+        elif self.ablation_parameters.archtype == 'cnn':
+            self.encoder_main = CNN(
+                d_inp = d_inp,
+                n_classes = self.n_classes,
+            )
+            self.d_z = 128
+        elif self.ablation_parameters.archtype == 'lstm':
+            self.encoder_main = LSTM(
+                d_inp = d_inp,
+                n_classes = self.n_classes,
+            )
+            self.d_z = 128
 
         self.encoder_pret = TransformerMVTS(
             d_inp = d_inp,  # Dimension of input from samples (must be constant)
@@ -100,12 +116,24 @@ class BCExplainModel(nn.Module):
             n_classes = self.n_classes, # Number of classes for classification head
             **self.transformer_args # TODO: change to a different parameter later - leave simple for now
         )
-        self.encoder_t = TransformerMVTS(
-            d_inp = d_inp,  # Dimension of input from samples (must be constant)
-            max_len = max_len, # Max length of any sample to be fed into model
-            n_classes = self.n_classes, # Number of classes for classification head
-            **self.transformer_args # TODO: change to a different parameter later - leave simple for now
-        )
+
+        if self.ablation_parameters.archtype == 'transformer':
+            self.encoder_t = TransformerMVTS(
+                d_inp = d_inp,  # Dimension of input from samples (must be constant)
+                max_len = max_len, # Max length of any sample to be fed into model
+                n_classes = self.n_classes, # Number of classes for classification head
+                **self.transformer_args # TODO: change to a different parameter later - leave simple for now
+            )
+        elif self.ablation_parameters.archtype == 'cnn':
+            self.encoder_t = CNN(
+                d_inp = d_inp,
+                n_classes = self.n_classes,
+            )
+        elif self.ablation_parameters.archtype == 'lstm':
+            self.encoder_t = LSTM(
+                d_inp = d_inp,
+                n_classes = self.n_classes,
+            )
 
         # For decoder, first value [0] is actual value, [1] is mask value (predicted logit)
 
@@ -136,7 +164,10 @@ class BCExplainModel(nn.Module):
             src = src.transpose(0, 1)
             times = times.transpose(0, 1)
 
-        pred_regular, z_main, z_seq_main = self.encoder_main(src, times, captum_input = False, get_agg_embed = True)
+        if self.ablation_parameters.archtype == 'transformer':
+            pred_regular, z_main, z_seq_main = self.encoder_main(src, times, captum_input = False, get_agg_embed = True)
+        else:
+            pred_regular, z_main = self.encoder_main(src, times, captum_input = False, get_embedding = True)
         if not self.ablation_parameters.g_pret_equals_g:
             z_seq = self.encoder_pret.embed(src, times, captum_input = False, aggregate = False)
 
@@ -149,17 +180,23 @@ class BCExplainModel(nn.Module):
             mask_in, ste_mask = self.mask_generator(z_seq, src, times)
 
         # Need sensor-level masking if multi-variate:
-        if self.d_inp > 1:
+        if self.d_inp > 1 or (self.ablation_parameters.archtype != 'transformer'):
             exp_src, ste_mask_attn = self.multivariate_mask(src, ste_mask)
         else:
             # Easy, simply transform to attention mask:
             ste_mask_attn = transform_to_attn_mask(ste_mask)
             exp_src = src
 
-        if self.ablation_parameters.equal_g_gt:
-            pred_mask, z_mask, z_seq_mask = self.encoder_main(exp_src, times, attn_mask = ste_mask_attn, get_agg_embed = True)
+        if self.ablation_parameters.archtype == 'transformer':
+            if self.ablation_parameters.equal_g_gt:
+                pred_mask, z_mask, z_seq_mask = self.encoder_main(exp_src, times, attn_mask = ste_mask_attn, get_agg_embed = True)
+            else:
+                pred_mask, z_mask, z_seq_mask = self.encoder_t(exp_src, times, attn_mask = ste_mask_attn, get_agg_embed = True)
         else:
-            pred_mask, z_mask, z_seq_mask = self.encoder_t(exp_src, times, attn_mask = ste_mask_attn, get_agg_embed = True)
+            if self.ablation_parameters.equal_g_gt:
+                pred_mask, z_mask = self.encoder_main(exp_src, times, get_embeddding = True)
+            else:
+                pred_mask, z_mask = self.encoder_t(exp_src, times, get_embedding = True)
 
         if self.ablation_parameters.ptype_assimilation:
             ptypes, match_m = self.hard_ptype_matching(z_mask)
@@ -290,9 +327,9 @@ class BCExplainModel(nn.Module):
 
     def set_config(self): # TODO: update
         self.config = {
-            'd_inp': self.encoder_main.d_inp,
+            'd_inp': self.d_inp,
             'max_len': self.max_len,
-            'n_classes': self.encoder_main.n_classes,
+            'n_classes': self.n_classes,
             'n_prototypes': self.n_prototypes,
             'gsat_r': self.gsat_r,
             'transformer_args': self.transformer_args,

@@ -6,7 +6,8 @@ import ipdb
 from txai.utils.predictors.loss_smoother_stats import exp_criterion_eval_smoothers
 from txai.utils.predictors.eval import eval_mv4
 from txai.utils.cl import in_batch_triplet_sampling
-from txai.models.run_model_utils import batch_forwards
+from txai.models.run_model_utils import batch_forwards, batch_forwards_TransformerMVTS
+from txai.utils.cl import basic_negative_sampling
 
 from txai.utils.functional import js_divergence
 
@@ -47,6 +48,9 @@ def train_mv6_consistency(
         opt_pred_mask = False, # If true, optimizes based on clf_criterion
         opt_pred_mask_to_full_pred = False,
         batch_forward_size = None,
+        simclr_training = False,
+        num_negatives_simclr = 64,
+        max_batch_size_simclr_negs = None,
     ):
     '''
     Args:
@@ -98,14 +102,37 @@ def train_mv6_consistency(
             if sim_criterion is not None:
                 if label_matching and embedding_matching:
                     org_embeddings, conc_embeddings = out_dict['all_z']
-                    if model.ablation_parameters.ptype_assimilation and (not (model.ablation_parameters.side_assimilation)):
-                        conc_embeddings = out_dict['ptypes']
-            
-                    emb_sim_loss = sim_criterion[0](org_embeddings, conc_embeddings)
 
-                    if model.ablation_parameters.side_assimilation:
-                        emb_ptype_sim_loss = sim_criterion[0](org_embeddings, out_dict['ptypes'])
-                        emb_sim_loss += emb_ptype_sim_loss
+                    if simclr_training:
+                        neg_inds = basic_negative_sampling(X, ids, dataX, num_negatives = num_negatives_simclr)
+                        n_inds_flat = neg_inds.flatten()
+                        if max_batch_size_simclr_negs is None:
+                            neg_embeddings = model.encoder_main.embed(dataX[:,n_inds_flat,:], dataT[:,n_inds_flat], captum_input = False)
+                        else:
+                            _, neg_embeddings = batch_forwards_TransformerMVTS(model.encoder_main, dataX[:,n_inds_flat,:], dataT[:,n_inds_flat], batch_size = max_batch_size_simclr_negs)
+
+                        # Reshape to split out number of negatives:
+                        inds = torch.arange(X.shape[0])
+                        #print('is', inds.shape)
+                        #print('ne', neg_embeddings.shape)
+                        inds_rep = torch.repeat_interleave(inds, num_negatives_simclr)
+                        #print(inds_rep)
+                        neg_embeddings = torch.stack([neg_embeddings[(inds_rep==j),:] for j in range(X.shape[0])], dim = 0).transpose(1,2)
+                        # print('neg_emb', neg_embeddings.shape)
+                        # print('c', conc_embeddings.shape)
+                        #neg_embeddings = neg_embeddings.view(org_embeddings.shape[0], -1, num_negatives)
+
+                        emb_sim_loss = sim_criterion[0](conc_embeddings, org_embeddings, neg_embeddings)
+
+                    else:
+                        if model.ablation_parameters.ptype_assimilation and (not (model.ablation_parameters.side_assimilation)):
+                            conc_embeddings = out_dict['ptypes']
+                
+                        emb_sim_loss = sim_criterion[0](org_embeddings, conc_embeddings)
+
+                        if model.ablation_parameters.side_assimilation:
+                            emb_ptype_sim_loss = sim_criterion[0](org_embeddings, out_dict['ptypes'])
+                            emb_sim_loss += emb_ptype_sim_loss
 
                     pred_org = out_dict['pred']
                     pred_mask = out_dict['pred_mask']

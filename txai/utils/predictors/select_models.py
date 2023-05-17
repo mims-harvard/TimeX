@@ -41,3 +41,23 @@ def simloss_on_val_wboth(sim_criterion, lam = 1.0):
         return -1.0 * L # Need maximum, so return negative
 
     return f
+
+def simloss_on_val_laonly(sim_criterion):
+    # Early stopping for sim loss - Label Alignment only
+    def f(out_dict, val = None):
+        mlab, flab = out_dict['pred_mask'], out_dict['pred']
+        L = sim_criterion(mlab, flab)
+        return -1.0 * L # Need maximum, so return negative
+    return f
+
+def simloss_on_val_cononly(sim_criterion):
+    # Early stopping for sim loss - MBC only
+    def f(out_dict, val = None):
+        org_z, con_z = out_dict['all_z']
+        L = sim_criterion(org_z, con_z)
+        return -1.0 * L # Need maximum, so return negative
+    return f
+
+def cosine_sim_for_simclr(org_z, con_z):
+    sim = -1.0 * F.cosine_similarity(org_z, con_z, dim = -1).mean()
+    return sim
