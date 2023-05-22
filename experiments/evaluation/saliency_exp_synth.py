@@ -25,10 +25,10 @@ def get_model(args, X):
 
     if args.model_type == "cnn":
         # TODO set n_classes dependant on dataset
-        model = CNN(d_inp=X.shape[-1], n_classes=4)
+        model = CNN(d_inp=X.shape[-1], n_classes=2 if args.dataset == "mitecg_hard" else 4)
     elif args.model_type == "lstm":
         # TODO set n_classes dependent on dataset
-        model = LSTM(d_inp=X.shape[-1], n_classes=4)
+        model = LSTM(d_inp=X.shape[-1], n_classes=2 if args.dataset == "mitecg_hard" else 4)
 
     else: # transformer
         if args.dataset == 'scs_better':

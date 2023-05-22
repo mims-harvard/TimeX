@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from sklearn.metrics import f1_score, average_precision_score, roc_auc_score
 from txai.models.run_model_utils import batch_forwards_TransformerMVTS
+from txai.models.encoders.simple import CNN, LSTM
 
 @torch.no_grad()
 def eval_on_tuple(test_tuple, model, n_classes, mask = None):
@@ -121,7 +122,13 @@ def eval_mvts_transformer(test_tuple, model, batch_size = None, auprc = False, a
     X, times, y = test_tuple
 
     if batch_size is not None:
-        pred, _ = batch_forwards_TransformerMVTS(model, X, times, batch_size = batch_size)
+        if isinstance(model, CNN) or isinstance(model, LSTM):
+            pred = torch.cat(
+                [model(xb, tb) for xb, tb in zip(torch.split(X, batch_size, dim=1), torch.split(times, batch_size, dim=1))],
+                dim=0
+            )
+        else: 
+            pred, _ = batch_forwards_TransformerMVTS(model, X, times, batch_size = batch_size)
     else:
         pred = model(X, times)
 
