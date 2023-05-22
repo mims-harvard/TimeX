@@ -7,16 +7,15 @@ from txai.trainers.train_mv6_consistency import train_mv6_consistency
 
 from txai.models.encoders.transformer_simple import TransformerMVTS
 from txai.models.bc_model import BCExplainModel, AblationParameters, transformer_default_args
-from txai.utils.data import process_Synth
+from txai.utils.data.preprocess import process_Boiler_OLD, process_Epilepsy
 from txai.utils.predictors.eval import eval_mv4
 from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.data.datasets import DatasetwInds
 from txai.utils.predictors.loss_cl import *
-from txai.utils.predictors.select_models import simloss_on_val_wboth, cosine_sim_for_simclr
+from txai.utils.predictors.select_models import simloss_on_val_wboth
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
-
 
 def naming_convention(args):
     if args.eq_ge:
@@ -44,59 +43,42 @@ def naming_convention(args):
 
 def main(args):
 
-    tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/lowvardetect/models/transformer_new2_split={}.pt"
+    tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/epilepsy/models/transformer_split={}.pt"
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     clf_criterion = Poly1CrossEntropyLoss(
-        num_classes = 4,
+        num_classes = 2,
         epsilon = 1.0,
         weight = None,
         reduction = 'mean'
     )
 
     sim_criterion_label = LabelConsistencyLoss()
-    if args.simclr:
-        sim_criterion_cons = SimCLRLoss()
-        sc_expand_args = {'simclr_training':True, 'num_negatives_simclr':64}
-    else:
-        sim_criterion_cons = EmbedConsistencyLoss(normalize_distance = True)
-        sc_expand_args = {'simclr_training':False, 'num_negatives_simclr':64}
-    #sim_criterion_cons = EmbedConsistencyLoss(normalize_distance = True)
+    sim_criterion_cons = EmbedConsistencyLoss()
 
     if args.no_la:
         sim_criterion = sim_criterion_cons
-        selection_criterion = None
     elif args.no_con:
         sim_criterion = sim_criterion_label
-        selection_criterion = None
     else: # Regular
         sim_criterion = [sim_criterion_cons, sim_criterion_label]
-        if args.simclr:
-            selection_criterion = simloss_on_val_wboth([cosine_sim_for_simclr, sim_criterion_label], lam = 1.0)
-        else:
-            selection_criterion = simloss_on_val_wboth(sim_criterion, lam = 1.0)
+        selection_criterion = simloss_on_val_wboth(sim_criterion, lam = 1.0)
 
     targs = transformer_default_args
 
     for i in range(2, 6):
-        # if (i == 3):
-        #     continue
-        D = process_Synth(split_no = i, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/LowVarDetect')
-        dset = DatasetwInds(D['train_loader'].X.to(device), D['train_loader'].times.to(device), D['train_loader'].y.to(device))
-        train_loader = torch.utils.data.DataLoader(dset, batch_size = 64, shuffle = True)
+        trainEpi, val, test = process_Epilepsy(split_no = i, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Epilepsy/')
+        trainB = (trainEpi.X, trainEpi.time, trainEpi.y)
+        # Output of above are chunks
+        train_dataset = DatasetwInds(*trainB)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = 32, shuffle = True)
 
-        val, test = D['val'], D['test']
+        val = (val.X, val.time, val.y)
+        test = (test.X, test.time, test.y)
 
-        # Calc statistics for baseline:
-        mu = D['train_loader'].X.mean(dim=1)
-        std = D['train_loader'].X.std(unbiased = True, dim = 1)
-
-        # Change transformer args:
-        targs['trans_dim_feedforward'] = 32
-        targs['trans_dropout'] = 0.25
-        targs['nlayers'] = 1
-        targs['norm_embedding'] = True
+        mu = trainB[0].mean(dim=1)
+        std = trainB[0].std(unbiased = True, dim = 1)
 
         abl_params = AblationParameters(
             equal_g_gt = args.eq_ge,
@@ -112,23 +94,26 @@ def main(args):
             'connect': 2.0
         }
 
+        targs['trans_dim_feedforward'] = 16
+        targs['trans_dropout'] = 0.1
+        targs['norm_embedding'] = False
+
         model = BCExplainModel(
-            d_inp = 2,
-            max_len = 200,
-            n_classes = 4,
+            d_inp = val[0].shape[-1],
+            max_len = val[0].shape[0],
+            n_classes = 2,
             n_prototypes = 50,
             gsat_r = 0.5,
             transformer_args = targs,
             ablation_parameters = abl_params,
             loss_weight_dict = loss_weight_dict,
-            masktoken_stats = (mu, std),
-            tau = 1.0
+            masktoken_stats = (mu, std)
         )
 
         model.encoder_main.load_state_dict(torch.load(tencoder_path.format(i)))
         model.to(device)
 
-        model.init_prototypes(train = (D['train_loader'].X.to(device), D['train_loader'].times.to(device), D['train_loader'].y.to(device)))
+        model.init_prototypes(train = trainB)
 
         if not args.ge_rand_init: # Copies if not running this ablation
             model.encoder_t.load_state_dict(torch.load(tencoder_path.format(i)))
@@ -136,7 +121,7 @@ def main(args):
         for param in model.encoder_main.parameters():
             param.requires_grad = False
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr = 3e-3, weight_decay = 0.0001)
+        optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-4, weight_decay = 0.001)
         
         model_suffix = naming_convention(args)
         spath = os.path.join('models', model_suffix)
@@ -151,17 +136,15 @@ def main(args):
             sim_criterion = sim_criterion,
             beta_exp = 2.0,
             beta_sim = 1.0,
-            lam_label = 1.0,
             val_tuple = val, 
-            num_epochs = 100,
+            num_epochs = 50,
             save_path = spath,
-            train_tuple = (D['train_loader'].X, D['train_loader'].times, D['train_loader'].y),
+            train_tuple = trainB,
             early_stopping = True,
             selection_criterion = selection_criterion,
             label_matching = True,
             embedding_matching = True,
-            use_scheduler = False,
-            **sc_expand_args
+            use_scheduler = True
         )
 
         sdict, config = torch.load(spath)

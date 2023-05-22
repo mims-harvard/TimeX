@@ -12,7 +12,7 @@ from txai.utils.predictors.eval import eval_mv4
 from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.data.datasets import DatasetwInds
 from txai.utils.predictors.loss_cl import *
-from txai.utils.predictors.select_models import simloss_on_val_wboth
+from txai.utils.predictors.select_models import simloss_on_val_wboth, cosine_sim_for_simclr
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -56,7 +56,12 @@ def main(args):
     )
 
     sim_criterion_label = LabelConsistencyLoss()
-    sim_criterion_cons = EmbedConsistencyLoss()
+    if args.simclr:
+        sim_criterion_cons = SimCLRLoss()
+        sc_expand_args = {'simclr_training':True, 'num_negatives_simclr':64}
+    else:
+        sim_criterion_cons = EmbedConsistencyLoss()
+        sc_expand_args = {'simclr_training':False, 'num_negatives_simclr':64}
 
     if args.no_la:
         sim_criterion = sim_criterion_cons
@@ -64,7 +69,11 @@ def main(args):
         sim_criterion = sim_criterion_label
     else: # Regular
         sim_criterion = [sim_criterion_cons, sim_criterion_label]
-        selection_criterion = simloss_on_val_wboth(sim_criterion, lam = 1.0)
+        if args.simclr:
+            selection_criterion = simloss_on_val_wboth([cosine_sim_for_simclr, sim_criterion_label], lam = 1.0)
+        else:
+            selection_criterion = simloss_on_val_wboth(sim_criterion, lam = 1.0)
+        #selection_criterion = simloss_on_val_wboth(sim_criterion, lam = 1.0)
 
     targs = transformer_default_args
 
@@ -144,7 +153,8 @@ def main(args):
             selection_criterion = selection_criterion,
             label_matching = True,
             embedding_matching = True,
-            use_scheduler = True
+            use_scheduler = True,
+            **sc_expand_args
         )
 
         sdict, config = torch.load(spath)

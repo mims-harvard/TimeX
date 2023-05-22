@@ -12,7 +12,7 @@ from txai.utils.predictors.eval import eval_mv4
 from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.data.datasets import DatasetwInds
 from txai.utils.predictors.loss_cl import *
-from txai.utils.predictors.select_models import simloss_on_val_wboth
+from txai.utils.predictors.select_models import simloss_on_val_wboth, cosine_sim_for_simclr
 
 from txai.utils.shapebank.v1 import gen_dataset, gen_dataset_zero
 
@@ -20,10 +20,11 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 pret_copy = False
-pret_equal = True
+pret_equal = False
 print('Running variation pret_copy = {}, pret_equal = {}'.format(pret_copy, pret_equal))
 
-tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/seqcomb_mv/formal_models/transformer_split={}.pt"
+#tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/seqcomb_mv/formal_models/transformer_split={}.pt"
+tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/seqcomb_mv/models/ScombMV_lstm_split={}.pt"
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -37,13 +38,17 @@ clf_criterion = Poly1CrossEntropyLoss(
 #sim_criterion_label = LabelConsistencyLoss()
 sim_criterion_label = LabelAlignmentLoss()
 sim_criterion_cons = EmbedConsistencyLoss()
+#sim_criterion_cons = SimCLRLoss()
+#sc_expand_args = {'simclr_training':True, 'num_negatives_simclr':32}
+sc_expand_args = {}
 
 sim_criterion = [sim_criterion_cons, sim_criterion_label]
 selection_criterion = simloss_on_val_wboth(sim_criterion, lam = 1.0)
+#selection_criterion = simloss_on_val_wboth([cosine_sim_for_simclr, sim_criterion_label], lam = 1.0)
 
 targs = transformer_default_args
 
-for i in range(1,6):
+for i in range(2,6):
     D = process_Synth(split_no = i, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombMV')
     dset = DatasetwInds(D['train_loader'].X.to(device), D['train_loader'].times.to(device), D['train_loader'].y.to(device))
     train_loader = torch.utils.data.DataLoader(dset, batch_size = 64, shuffle = True)
@@ -66,6 +71,7 @@ for i in range(1,6):
         label_based_on_mask = True,
         ptype_assimilation = True,
         side_assimilation = True,
+        archtype = 'lstm'
     )
 
     loss_weight_dict = {
@@ -95,7 +101,7 @@ for i in range(1,6):
 
     optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-3, weight_decay = 0.001)
     
-    spath = 'models/bc_pret_eq_split={}.pt'.format(i)
+    spath = 'models/bc_lstm_split={}.pt'.format(i)
     print('saving at', spath)
 
     #model = torch.compile(model)
@@ -116,7 +122,8 @@ for i in range(1,6):
         early_stopping = True,
         selection_criterion = selection_criterion,
         label_matching = True,
-        embedding_matching = True
+        embedding_matching = True,
+        **sc_expand_args
     )
 
     #print(model.distance_mlp.get_parameter('0.weight'))

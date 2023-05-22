@@ -297,6 +297,8 @@ def main(args):
             #print(exp.shape)
             generated_exps[:,i,:] = exp
     
+    if args.savepath is not None: # Save based on provided location
+        torch.save(generated_exps, args.savepath)
     
     results_dict = ground_truth_xai_eval(generated_exps, gt_exps)
 
@@ -316,6 +318,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_type', type = str, default="transformer", choices=["transformer", "cnn", "lstm"])
     parser.add_argument('--org_v', action = 'store_true')
     parser.add_argument('--data_path', default="/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/", type = str, help = 'path to datasets root')
+    parser.add_argument('--savepath', default = None, type = str)
 
     args = parser.parse_args()
     if args.split_no == -1:

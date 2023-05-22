@@ -11,7 +11,7 @@ from txai.utils.predictors import eval_mvts_transformer
 
 from txai.utils.data import process_Synth
 from txai.synth_data.simple_spike import SpikeTrainDataset
-from txai.utils.data.preprocess import process_MITECG, process_Epilepsy, process_PAM
+from txai.utils.data.preprocess import process_MITECG, process_Epilepsy, process_PAM, process_Boiler_OLD
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -58,12 +58,15 @@ def get_model(args, X):
         model = TransformerMVTS(
             d_inp = X.shape[-1],
             max_len = X.shape[0],
-            nlayers = 2,
             n_classes = 2,
+            nlayers = 1,
+            nhead = 1,
             trans_dim_feedforward = 64,
             trans_dropout = 0.1,
             d_pe = 16,
-            stronger_clf_head = True,
+            stronger_clf_head = False,
+            pre_agg_transform = False,
+            norm_embedding = True
         )
 
     elif args.dataset == 'pam':
@@ -86,7 +89,17 @@ def get_model(args, X):
         )
     
     elif args.dataset == 'boiler':
-        pass
+        model = TransformerMVTS(
+            d_inp = X.shape[-1],
+            max_len = X.shape[0],
+            n_classes = 2,
+            nlayers = 1,
+            trans_dim_feedforward = 32,
+            trans_dropout = 0.25,
+            d_pe = 16,
+            norm_embedding = True,
+            stronger_clf_head = False,
+        )
 
     #model = torch.compile(model)
 
@@ -113,7 +126,7 @@ def main(args):
         trainEpi, val, test = process_Epilepsy(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Epilepsy/')
         test = (test.X, test.time, test.y)
     elif Dname == 'boiler':
-        pass
+        _, _, test = process_Boiler_OLD(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Boiler/')
     elif Dname == 'mitecg_hard':
         D = process_MITECG(split_no = args.split_no, device = device, hard_split = True, base_path = Path(args.data_path) / 'MITECG-Hard')
         _, _, test, gt_exps = D
