@@ -258,7 +258,7 @@ def main(args):
         winit_path = Path(args.model_path).parent / f"winit_split={args.split_no}/"
         winit = WinITWrapper(
             device, 
-            num_features=test[0].shape[-1], 
+            num_features=X.shape[-1], 
             data_name=Dname, 
             path=winit_path
         )

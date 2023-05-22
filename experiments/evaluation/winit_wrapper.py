@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 import torch
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
@@ -63,7 +64,7 @@ class WinITWrapper(WinITExplainer):
             batch_size, num_features, num_timesteps = x.shape
             scores = []
 
-            for t in range(num_timesteps):
+            for t in tqdm(range(num_timesteps)):
                 window_size = min(t, self.window_size)
 
                 if t == 0:
@@ -173,7 +174,7 @@ def train_generator(args):
     train_dl = DataLoader(train_ds, batch_size=256, shuffle=True)
     val_dl = DataLoader(val_ds, batch_size=256)
     print("training generators...")
-    results = winit.train_generators(train_loader=train_dl, valid_loader=val_dl, num_epochs=1000)
+    results = winit.train_generators(train_loader=train_dl, valid_loader=val_dl, num_epochs=args.epochs)
 
     plt.plot(results.train_loss_trends[0], label="train_loss")
     plt.plot(results.valid_loss_trends[0], label="valid_loss")
@@ -189,6 +190,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type = str)
     parser.add_argument('--models_path', type = str, help = 'path to store models')
     parser.add_argument('--data_path', default="/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/", type = str, help = 'path to datasets root')
+    parser.add_argument('--epochs', type=int, default=1000)
     args = parser.parse_args()
     for split_no in range(1, 6):
         args.split_no = split_no
