@@ -26,9 +26,13 @@ class CNN(nn.Module):
 
     def forward(self, x, _times, get_embedding=False, captum_input=False, show_sizes=False):
         if captum_input:
+            if len(x.shape) == 2:
+                x = x.unsqueeze(0)
             # batch, time, channels -> batch, channels, time
             x = x.permute(0, 2, 1)
         else: 
+            if len(x.shape) == 2:
+                x = x.unsqueeze(1)
             # time, batch, channels -> batch, channels, time
             x = x.permute(1, 2, 0)
 
@@ -65,8 +69,12 @@ class LSTM(nn.Module):
 
     def forward(self, x, _times, get_embedding=False, captum_input=False, show_sizes=False):
         if not captum_input: 
+            if len(x.shape) == 2:
+                x = x.unsqueeze(1)
             # time, batch, channels -> batch, time, channels
             x = x.permute(1, 0, 2)
+        elif len(x.shape) == 2:
+            x = x.unsqueeze(0)
 
         embedding, _ = self.encoder(x)
         embedding = embedding.mean(dim=1) # mean over time

@@ -279,7 +279,7 @@ def main(args):
         model.to(device)
         model.eval()
         #model.train()
-        if args.model_type == "lstm" and args.exp_method == "ig":
+        if args.model_type == "lstm" and args.exp_method in ["ig", "dyna"]:
             # training mode necessary for cudnn RNN backward 
             model.train()
 
