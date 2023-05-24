@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(__file__))
 
 from txai.utils.predictors.loss import Poly1CrossEntropyLoss
 from txai.models.run_model_utils import batch_forwards_TransformerMVTS
+from txai.models.encoders.simple import CNN, LSTM
 
 default_scheduler_args = {
     'mode': 'max', 
@@ -51,7 +52,9 @@ def train(
         counterfactual_training = False,
         max_mask_size = None,
         replace_method = None,
-        print_freq = 10):
+        print_freq = 10,
+        clip_grad = None,
+        ):
     '''
     Loader should output (B, d, T) - in style of captum input
 
@@ -105,6 +108,10 @@ def train(
             optimizer.zero_grad()
             loss = criterion(out, y)
             loss.backward()
+
+            if clip_grad is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
+
             optimizer.step()
 
             if counterfactual_training:
@@ -143,10 +150,13 @@ def train(
         with torch.no_grad():
             X, times, y = val_tuple
             if validate_by_step is not None:
-                pred, _ = batch_forwards_TransformerMVTS(model, X, times, batch_size = validate_by_step)
-                # pred = torch.empty((X.shape[1], n_classes)).to(y.get_device())
-                # for i in range(X.shape[1]):
-                #     pred[i,:] = model(X[:,i,:], times[:,i].unsqueeze(-1), show_sizes = show_sizes)
+                if isinstance(model, CNN) or isinstance(model, LSTM):
+                    pred = torch.cat(
+                        [model(xb, tb) for xb, tb in zip(torch.split(X, validate_by_step, dim=1), torch.split(times, validate_by_step, dim=1))],
+                        dim=0
+                    )
+                else:
+                    pred, _ = batch_forwards_TransformerMVTS(model, X, times, batch_size = validate_by_step)
             else:
                 pred = model(X, times, show_sizes = show_sizes)
             val_loss = criterion(pred, y)

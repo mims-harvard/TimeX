@@ -25,10 +25,10 @@ def get_model(args, X):
 
     if args.model_type == "cnn":
         # TODO set n_classes dependant on dataset
-        model = CNN(d_inp=X.shape[-1], n_classes=4)
+        model = CNN(d_inp=X.shape[-1], n_classes=2 if args.dataset == "mitecg_hard" else 4)
     elif args.model_type == "lstm":
         # TODO set n_classes dependent on dataset
-        model = LSTM(d_inp=X.shape[-1], n_classes=4)
+        model = LSTM(d_inp=X.shape[-1], n_classes=2 if args.dataset == "mitecg_hard" else 4)
 
     else: # transformer
         if args.dataset == 'scs_better':
@@ -258,7 +258,7 @@ def main(args):
         winit_path = Path(args.model_path).parent / f"winit_split={args.split_no}/"
         winit = WinITWrapper(
             device, 
-            num_features=test[0].shape[-1], 
+            num_features=X.shape[-1], 
             data_name=Dname, 
             path=winit_path
         )
@@ -279,7 +279,7 @@ def main(args):
         model.to(device)
         model.eval()
         #model.train()
-        if args.model_type == "lstm" and args.exp_method == "ig":
+        if args.model_type == "lstm" and args.exp_method in ["ig", "dyna"]:
             # training mode necessary for cudnn RNN backward 
             model.train()
 

@@ -1,5 +1,5 @@
-# TimeSeriesCBM
-Practical Concept Bottleneck Model for Time Series
+# TimeX
+Explaining time series models through self-supervised model behavior consistency.
 
 ## Installation
 You'll need to locally install a reference to the `txai` package, which contains commonly-used utilities, model architectures, and training procedures. To install, navigate to the base directory `*/TimeSeriesCBM/` and run:
