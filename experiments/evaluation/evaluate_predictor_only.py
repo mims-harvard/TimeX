@@ -53,6 +53,18 @@ def get_model(args, X):
             trans_dropout = 0.25,
             d_pe = 16,
         )
+
+    elif args.dataset == 'lowvardetect':
+        model = TransformerMVTS(
+            d_inp = X.shape[-1],
+            max_len = X.shape[0],
+            nlayers = 1,
+            n_classes = 4,
+            trans_dim_feedforward = 32,
+            trans_dropout = 0.25,
+            d_pe = 16,
+            stronger_clf_head = False,
+        )
     
     elif args.dataset == 'mitecg_hard':
         model = TransformerMVTS(
@@ -119,6 +131,9 @@ def main(args):
     elif Dname == 'seqcomb_mv':
         D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombMV')
         test = D['test']
+    elif Dname == 'lowvardetect':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'LowVarDetect')
+        test = D['test']
     elif Dname == 'pam':
         trainPAM, val, test = process_PAM(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/PAMAP2data/', gethalf = True)
         test = (test.X, test.time, test.y)
@@ -128,7 +143,7 @@ def main(args):
     elif Dname == 'boiler':
         _, _, test = process_Boiler_OLD(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Boiler/')
     elif Dname == 'mitecg_hard':
-        D = process_MITECG(split_no = args.split_no, device = device, hard_split = True, base_path = Path(args.data_path) / 'MITECG-Hard')
+        D = process_MITECG(split_no = args.split_no, device = device, hard_split = True, need_binarize = True, exclude_pac_pvc = True, base_path = Path(args.data_path) / 'MITECG-Hard')
         _, _, test, gt_exps = D
         test = (test.X, test.time, test.y)
 

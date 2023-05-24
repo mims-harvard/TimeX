@@ -12,7 +12,7 @@ from txai.utils.predictors.eval import eval_mv4
 from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.data.datasets import DatasetwInds
 from txai.utils.predictors.loss_cl import *
-from txai.utils.predictors.select_models import simloss_on_val_wboth, cosine_sim_for_simclr
+from txai.utils.predictors.select_models import *
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -33,6 +33,10 @@ def naming_convention(args):
         name = "bc_nola_split={}.pt"
     elif args.no_con:
         name = "bc_nocon_split={}.pt"
+    elif args.cnn:
+        name = "bc_cnn_split={}.pt"
+    elif args.lstm:
+        name = "bc_lstm_split={}.pt"
     else:
         name = 'bc_full_split={}.pt'
     
@@ -44,7 +48,15 @@ def naming_convention(args):
 
 def main(args):
 
-    tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/freqshape/formal_models/Scomb_transformer_split={}.pt"
+    if args.lstm:
+        arch = 'lstm'
+        tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/freqshape/formal_models/Freqshape_lstm_split={}.pt"
+    elif args.cnn:
+        arch = 'cnn'
+        tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/freqshape/formal_models/Freqshape_cnn_split={}.pt"
+    else:
+        arch = 'transformer'
+        tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/freqshape/formal_models/Scomb_transformer_split={}.pt"
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -58,21 +70,29 @@ def main(args):
     sim_criterion_label = LabelConsistencyLoss()
     if args.simclr:
         sim_criterion_cons = SimCLRLoss()
-        sc_expand_args = {'simclr_training':True, 'num_negatives_simclr':64}
+        sc_expand_args = {'simclr_training':True, 'num_negatives_simclr':32}
     else:
         sim_criterion_cons = EmbedConsistencyLoss()
-        sc_expand_args = {'simclr_training':False, 'num_negatives_simclr':64}
+        sc_expand_args = {'simclr_training':False, 'num_negatives_simclr':32}
 
     if args.no_la:
         sim_criterion = sim_criterion_cons
+        selection_criterion = simloss_on_val_cononly(sim_criterion)
+        label_matching = False
+        embedding_matching = True
     elif args.no_con:
         sim_criterion = sim_criterion_label
+        selection_criterion = simloss_on_val_laonly(sim_criterion)
+        label_matching = True
+        embedding_matching = False
     else: # Regular
         sim_criterion = [sim_criterion_cons, sim_criterion_label]
         if args.simclr:
             selection_criterion = simloss_on_val_wboth([cosine_sim_for_simclr, sim_criterion_label], lam = 1.0)
         else:
             selection_criterion = simloss_on_val_wboth(sim_criterion, lam = 1.0)
+        label_matching = True
+        embedding_matching = True
 
     targs = transformer_default_args
 
@@ -100,6 +120,7 @@ def main(args):
             ptype_assimilation = True, 
             side_assimilation = True,
             use_ste = (not args.no_ste),
+            archtype = arch
         )
 
         loss_weight_dict = {
@@ -115,7 +136,8 @@ def main(args):
             gsat_r = 0.5,
             transformer_args = targs,
             ablation_parameters = abl_params,
-            loss_weight_dict = loss_weight_dict
+            loss_weight_dict = loss_weight_dict,
+            masktoken_stats = (mu, std),
         )
 
         model.encoder_main.load_state_dict(torch.load(tencoder_path.format(i)))
@@ -129,6 +151,9 @@ def main(args):
         for param in model.encoder_main.parameters():
             param.requires_grad = False
 
+        # if args.lstm or args.cnn:
+        #optimizer = torch.optim.AdamW(model.parameters(), lr = 5e-4, weight_decay = 0.001)
+        # else:
         optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-3, weight_decay = 0.001)
         
         model_suffix = naming_convention(args)
@@ -150,8 +175,8 @@ def main(args):
             train_tuple = (D['train_loader'].X, D['train_loader'].times, D['train_loader'].y),
             early_stopping = True,
             selection_criterion = selection_criterion,
-            label_matching = True,
-            embedding_matching = True,
+            label_matching = label_matching,
+            embedding_matching = embedding_matching,
             use_scheduler = True,
             **sc_expand_args
         )
@@ -174,6 +199,8 @@ if __name__ == '__main__':
     ablations.add_argument('--simclr', action = 'store_true', help = 'Uses SimCLR loss instead of consistency loss')
     ablations.add_argument('--no_la', action = 'store_true', help = 'No label alignment - just consistency loss')
     ablations.add_argument('--no_con', action = 'store_true', help = 'No consistency loss - just label')
+    ablations.add_argument('--lstm', action = 'store_true')
+    ablations.add_argument('--cnn', action = 'store_true')
     # Note if you don't activate any of them, it just trains the normal method
 
     parser.add_argument('--r', type = float, default = 0.5, help = 'r for GSAT loss')

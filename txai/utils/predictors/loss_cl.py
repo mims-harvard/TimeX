@@ -2,7 +2,7 @@ import math
 import torch
 import torch.nn.functional as F
 
-from txai.utils.functional import js_divergence
+from txai.utils.functional import js_divergence, js_divergence_logsoftmax
 
 class SimCLRLoss(torch.nn.Module):
     def __init__(self, temperature = 1.0):
@@ -81,6 +81,34 @@ class LabelConsistencyLoss(torch.nn.Module):
         # else:
         return score
 
+class LabelConsistencyLoss_LS(torch.nn.Module):
+    def __init__(self):
+        super(LabelConsistencyLoss_LS, self).__init__()
+
+    def forward(self, mask_labels, full_labels):    
+        '''
+        embeddings: (B, d) shape
+        positives: (B, d, n_pos) shape
+        negatives: (B, d, n_neg) shape
+        '''
+
+        # Enumerate batch:
+        combs = torch.combinations(torch.arange(mask_labels.shape[0]), r = 2, with_replacement = False)
+
+        mask_labels_expanded_lhs = mask_labels[combs[:,0],:]
+        mask_labels_expanded_rhs = mask_labels[combs[:,1],:]
+
+        full_labels_expanded_lhs = full_labels[combs[:,0],:]    
+        full_labels_expanded_rhs = full_labels[combs[:,1],:]
+
+        # Sim to positives:
+        score_mask = js_divergence_logsoftmax(mask_labels_expanded_lhs, mask_labels_expanded_rhs)
+        score_full = js_divergence_logsoftmax(full_labels_expanded_lhs, full_labels_expanded_rhs)
+
+        score = (score_mask - score_full).pow(2).mean()
+
+        return score
+
 class LabelAlignmentLoss(torch.nn.Module):
     def __init__(self):
         super(LabelAlignmentLoss, self).__init__()
@@ -89,6 +117,13 @@ class LabelAlignmentLoss(torch.nn.Module):
         mask_p = mask_labels.softmax(dim=-1)
         full_p = full_labels.softmax(dim=-1)
         return js_divergence(mask_p, full_p)
+
+# class LabelAlignmentLoss_LS(torch.nn.Module):
+#     def __init__(self):
+#         super(LabelAlignmentLoss_LS, self).__init__()
+
+#     def forward(self, mask_labels, full_labels):
+#         return js_divergence_logsoftmax(mask_labels, full_labels)
 
 class ConceptTopologyLoss(torch.nn.Module):
     def __init__(self, temperature = 1.0, prop_select = 0.5):

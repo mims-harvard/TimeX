@@ -168,8 +168,10 @@ class BCExplainModel(nn.Module):
             pred_regular, z_main, z_seq_main = self.encoder_main(src, times, captum_input = False, get_agg_embed = True)
         else:
             pred_regular, z_main = self.encoder_main(src, times, captum_input = False, get_embedding = True)
+
         if not self.ablation_parameters.g_pret_equals_g:
             z_seq = self.encoder_pret.embed(src, times, captum_input = False, aggregate = False)
+        
 
         # Generate smooth_src: # TODO: expand to lists
         smooth_src_list, mask_in_list, ste_mask_list, = [], [], []
@@ -264,6 +266,11 @@ class BCExplainModel(nn.Module):
         # First apply mask directly on input:
         baseline = self._get_baseline(B = src.shape[1])
         ste_mask_rs = ste_mask.transpose(0,1)
+        if len(ste_mask_rs.shape) == 2:
+            ste_mask_rs = ste_mask_rs.unsqueeze(-1)
+        # print('ste_mask_rs', ste_mask_rs.shape)
+        # print('baseline', baseline.shape)
+        # print('src', src.shape)
         src_masked = src * ste_mask_rs + (1 - ste_mask_rs) * baseline
 
         # Then deduce attention mask by multiplication across sensors:
@@ -307,7 +314,10 @@ class BCExplainModel(nn.Module):
             inds = torch.randperm(X.shape[1])[:self.n_prototypes]
 
         Xp, times_p = X[:,inds,:], times[:,inds]
-        z_p = self.encoder_main.embed(Xp, times_p, captum_input = False)
+        if self.ablation_parameters.archtype == 'transformer':
+            z_p = self.encoder_main.embed(Xp, times_p, captum_input = False)
+        else:
+            _, z_p = self.encoder_main(Xp, times_p, captum_input = False, get_embedding = True)
 
         self.prototypes = torch.nn.Parameter(z_p.detach().clone()) # Init prototypes to class (via parameter)
     

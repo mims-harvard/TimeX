@@ -136,7 +136,12 @@ def train_mv6_consistency(
 
                     pred_org = out_dict['pred']
                     pred_mask = out_dict['pred_mask']
+                    #print('pre', pred_org)
                     label_sim_loss = sim_criterion[1](pred_mask, pred_org)
+
+                    # print('label', label_sim_loss)
+                    # print('emb', emb_sim_loss)
+                    # print('----')
 
                     sim_loss = emb_sim_loss + lam_label * label_sim_loss
                     label_sim_list.append(label_sim_loss.detach().clone().item())
@@ -159,6 +164,11 @@ def train_mv6_consistency(
             sim_loss = beta_sim * sim_loss
             exp_loss = beta_exp * model.compute_loss(out_dict)
             loss = clf_loss + exp_loss + sim_loss
+            # print('---------')
+            # print('clf', clf_loss)
+            # print('exp', exp_loss)
+            # print('sim', sim_loss)
+            #print('loss', loss)
 
             if clip_norm:
                 #print('Clip')

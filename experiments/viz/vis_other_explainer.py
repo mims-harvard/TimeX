@@ -130,18 +130,19 @@ def main(test, args):
     samptime = samptime.to(device)
     sampy = sampy.to(device)
 
-    explainer, _ = get_explainer(key = args.exp_method, args = args, device = device)
-
-    generated_exps = torch.zeros_like(sampX)
-
-    for i in range(3):
-        if args.exp_method == 'dyna': # This is a lazy solution, fix later
-            print('x', sampX[:,i,:].shape)
-            print('t', samptime[:,i].unsqueeze(1).shape)
-            exp = explainer(model, sampX[:,i,:].clone(), samptime[:,i].clone().unsqueeze(1), y = sampy[i].unsqueeze(0).clone())
-        else:
-            exp = explainer(model, sampX[:,i,:].unsqueeze(1).clone(), samptime[:,i].unsqueeze(-1).clone(), sampy[i].unsqueeze(0).clone())
-        generated_exps[:,i,:] = exp
+    if args.exp_method == 'gt':
+        generated_exps = gt_exps[:,inds,:]
+    else:
+        explainer, _ = get_explainer(key = args.exp_method, args = args, device = device)
+        generated_exps = torch.zeros_like(sampX)
+        for i in range(3):
+            if args.exp_method == 'dyna': # This is a lazy solution, fix later
+                print('x', sampX[:,i,:].shape)
+                print('t', samptime[:,i].unsqueeze(1).shape)
+                exp = explainer(model, sampX[:,i,:].clone(), samptime[:,i].clone().unsqueeze(1), y = sampy[i].unsqueeze(0).clone())
+            else:
+                exp = explainer(model, sampX[:,i,:].unsqueeze(1).clone(), samptime[:,i].unsqueeze(-1).clone(), sampy[i].unsqueeze(0).clone())
+            generated_exps[:,i,:] = exp
 
     # Prediction pass through model:
     out = model(sampX, samptime, captum_input = False)
@@ -155,7 +156,10 @@ def main(test, args):
         vis_one_saliency(sampX[:,i,:], generated_exps[:,i,:], ax, fig, col_num = i)
         ax[0,i].set_title('y = {:d}, yhat = {:d}'.format(sampy[i].item(), pred[i].item()))
     
-    fig.set_size_inches(18.5, 3 * d)
+    #fig.set_size_inches(18.5, 3 * d)
+    fig.set_size_inches(18, 5)
+    if args.savepdf is not None:
+        plt.savefig(args.savepdf)
     plt.show()
 
 if __name__ == '__main__':
@@ -167,6 +171,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type = str, help = 'only time series transformer right now')
     parser.add_argument('--class_num', default = None, type = int)
     parser.add_argument('--sample_seed', default = None, type = int)
+    parser.add_argument('--savepdf', default = None)
 
     args = parser.parse_args()
 
@@ -183,6 +188,7 @@ if __name__ == '__main__':
     elif D == 'scs_better':
         D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleBetter')
         test = D['test']
+        gt_exps = D['gt_exps']
     elif D == 'freqshapeud':
         D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/FreqShapeUD')
         test = D['test']

@@ -40,6 +40,13 @@ def js_divergence(p: Tensor, q: Tensor) -> Tensor:
     m = 0.5 * (p + q)
     return (0.5 * F.kl_div(p.log(), m, reduction = 'mean') + 0.5 * F.kl_div(q.log(), m, reduction = 'mean'))
 
+def js_divergence_logsoftmax(p: Tensor, q: Tensor) -> Tensor:
+    # JSD(P || Q)
+    # More stable version that performs log_softmax
+    # Implementation borrowed from: https://kornia.readthedocs.io/en/latest/_modules/kornia/losses/divergence.html
+    m = 0.5 * (p.softmax(dim=-1) + q.softmax(dim=-1))
+    return (0.5 * F.kl_div(p.log_softmax(dim=-1), m, reduction = 'mean') + 0.5 * F.kl_div(q.log_softmax(dim=-1), m, reduction = 'mean'))
+
 def cosine_sim_matrix(z1, z2):
     # Shape: (B1, d_z), (B2, d_z)
     z1 = F.normalize(z1, dim = -1)

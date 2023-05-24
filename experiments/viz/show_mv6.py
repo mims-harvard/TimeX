@@ -20,12 +20,14 @@ from sklearn.manifold import TSNE
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def main(model, test, class_num, heatmap = False, seed = None, topk = None):
+def main(model, test, class_num, heatmap = False, seed = None, topk = None, savepdf = None):
 
     visualize_explanations_new(model, test, show = False, class_num = class_num, heatmap = heatmap, topk = topk, seed = seed)
     fig = plt.gcf()
-    fig.set_size_inches(18.5, 10.5)
-    #plt.savefig('mah_class3.png', dpi=200)
+    #fig.set_size_inches(18.5, 10.5)
+    fig.set_size_inches(18, 5)
+    if savepdf is not None:
+        plt.savefig(savepdf)
     plt.show()
 
 def show_embed(model, test, caption = None, save_embed_name = None):
@@ -91,6 +93,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_emb_name', type = str)
     parser.add_argument('--topk', type = int, default = None)
     parser.add_argument('--show_concepts', action = 'store_true', help = 'shows discovered concepts, if applicable')
+    parser.add_argument('--savepdf', type = str, default = None)
 
     parser.add_argument('--org_v', action = 'store_true')
 
@@ -123,6 +126,9 @@ if __name__ == '__main__':
     elif D == 'lowvardetect':
         D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/LowVarDetect')
         test = D['test']
+    elif D == 'seqcomb_mv':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombMV')
+        test = D['test']
     elif D == 'mitecg_hard':
         _, _, test, _ = process_MITECG(split_no = args.split_no, hard_split = True, need_binarize = True, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Hard/')
         test = (test.X, test.time, test.y)
@@ -130,7 +136,7 @@ if __name__ == '__main__':
     # Loading:
     print('Loading model at {}'.format(args.model_path))
     sdict, config = torch.load(args.model_path)
-    print('Config:\n', config)
+    #print('Config:\n', config)
     if args.org_v:
         model = Modelv6_v2(**config)
     else:
@@ -146,7 +152,7 @@ if __name__ == '__main__':
     #vis_concepts(model, test)
     
     # Call main visualization:
-    main(model, test, args.class_num, heatmap = (not args.discrete), seed = args.sample_seed, topk = args.topk)
+    main(model, test, args.class_num, heatmap = (not args.discrete), seed = args.sample_seed, topk = args.topk, savepdf = args.savepdf)
 
     if args.show_concepts:
         show_concepts(model, test)
