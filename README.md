@@ -1,5 +1,10 @@
-# TimeX
-Explaining time series models through self-supervised model behavior consistency.
+# TimeX: Encoding Time-Series Explanations through Self-Supervised Model Behavior Consistency
+
+#### Authors: [Owen Queen](https://owencqueen.github.io/) (owen_queen@hms.harvard.edu), [Thomas Hartvigsen](https://www.tomhartvigsen.com/) (tomh@mit.edu), [Teddy Koker](https://teddykoker.com/) (thomas.koker@ll.mit.edu), [Huan He](https://hehuannb.github.io/) (hehuannb@gmail.com), [Theodoros Tsiligkaridis](https://www.ll.mit.edu/biographies/theodoros-tsiligkaridis) (ttsili@ll.mit.edu), [Marinka Zitnik](https://zitniklab.hms.harvard.edu/) (marinka@hms.harvard.edu)
+
+#### [Project website](https://zitniklab.hms.harvard.edu/projects/TimeX/)
+
+#### TimeX Paper: [Preprint](https://arxiv.org/abs/2306.02109)
 
 ## Overview
 TimeX is a novel time series explainer that explains time series classification models through learning an interpretable surrogate model. 
