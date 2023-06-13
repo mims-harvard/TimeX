@@ -13,3 +13,11 @@ experiments/occlusion_outputs/
 experiments/occ_eval_runs/
 experiments/mitecg_hard/abl_runs/
 experiments/viz/appendix_viz
+experiments/epilepsy/old_scripts/
+experiments/freqshape/old_scripts/
+experiments/scs_better/old_scripts/
+experiments/seqcomb_mv/old_scripts/
+experiments/viz/old_scripts/
+*conv_t_cpu.py
+experiments/scs_better/experiments_04-17/*
+experiments/scs_better/ptype_exps/*
