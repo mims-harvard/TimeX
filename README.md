@@ -27,6 +27,6 @@ Processed datasets and model weights will be released upon acceptance.
 
 ## Usage
 
-**Example**: An example can be found in `example.ipynb`.
+**Example**: Detailed examples of the model are given in the experiment scripts found in `experiments` directory. A good reference for a real-world dataset is given for the Epilepsy dataset in `experiments/epilepsy/bc_model_ptype.py`.
 
 **Locations of important implementations**: The TimeX model can be found in `txai/models/bc_model.py` under the name `BCExplainModel`. The novel model behavior consistency (MBC) loss is found in `txai/utils/predictors/loss_cl.py`.
