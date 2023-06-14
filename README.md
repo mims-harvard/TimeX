@@ -10,6 +10,8 @@ This explanation embedding space allows us to learn *landmark explanations*, whi
 Landmark explanations allow users to compare explanations across multiple samples, an important component for time series as predictive patterns are harder to intuitively understand through visual inspection of the time series sample.
 We demonstrate TimeX's capabilities on four novel synthetic datasets and four real-world time series datasets. 
 
+![Architecture](https://github.com/mims-harvard/TimeX/blob/main/fig2.jpg)
+
 ## Installation
 You'll need to locally install a reference to the `txai` package, which contains commonly-used utilities, model architectures, and training procedures. To install, navigate to the base directory `*/TimeSeriesCBM/` and run:
 ```
