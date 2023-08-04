@@ -1,4 +1,4 @@
-import re
+import re, time
 import argparse
 from pathlib import Path
 import torch
@@ -12,12 +12,13 @@ from txai.utils.experimental import get_explainer
 from txai.vis.vis_saliency import vis_one_saliency
 from txai.utils.data import process_Synth
 from txai.utils.data.preprocess import process_MITECG, process_Boiler
+from txai.utils.data.anomaly import process_Yahoo
 from txai.synth_data.simple_spike import SpikeTrainDataset
 
 from txai.models.modelv6_v2 import Modelv6_v2
 from txai.models.bc_model import BCExplainModel
 
-from txai.utils.evaluation import ground_truth_xai_eval
+from txai.utils.evaluation import ground_truth_xai_eval, ground_truth_IoU
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -25,7 +26,11 @@ def get_model(args, X):
 
     if args.model_type == "cnn":
         # TODO set n_classes dependant on dataset
-        model = CNN(d_inp=X.shape[-1], n_classes=2 if args.dataset == "mitecg_hard" else 4)
+        model = CNN(
+            d_inp=X.shape[-1], 
+            n_classes=2 if (args.dataset == "mitecg_hard" or args.dataset == 'anomaly') else 4,
+            dim = 64 if args.dataset == "anomaly" else 32
+        )
     elif args.model_type == "lstm":
         # TODO set n_classes dependent on dataset
         model = LSTM(d_inp=X.shape[-1], n_classes=2 if args.dataset == "mitecg_hard" else 4)
@@ -126,6 +131,13 @@ def get_model(args, X):
                 stronger_clf_head = False,
             )
 
+        # elif args.dataset == 'anomaly':
+        #     model = CNN(
+        #         d_inp = val[0].shape[-1],
+        #         n_classes = 2,
+        #         dim = 32,
+        #     )
+
     #model = torch.compile(model)
 
     return model
@@ -156,13 +168,18 @@ def main(args):
     elif Dname == 'boiler':
         D = process_Boiler(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'Boiler', 
             normalize = True)
+    elif Dname == 'anomaly':
+        D = process_Yahoo(split_no = args.split_no, device = device, balance = False)
     
     if (Dname == 'mitecg_hard') or (Dname == 'boiler'):
         _, _, test, gt_exps = D
+    # elif Dname == 'anomaly':
+    #     test = D['test']
+    #     gt_exps = D['gt_exps']
     else:
         test = D['test']
 
-    if Dname == 'scs_better' or Dname == 'seqcombsingle' or Dname == 'scs_inline' or Dname == 'seqcomb_mv' or Dname == 'lowvardetect':
+    if Dname == 'scs_better' or Dname == 'seqcombsingle' or Dname == 'scs_inline' or Dname == 'seqcomb_mv' or Dname == 'lowvardetect' or Dname == 'anomaly':
         y = test[2]
         X = test[0][:,(y != 0),:]
         times = test[1][:,y != 0]
@@ -219,6 +236,8 @@ def main(args):
         iters = torch.arange(0, B, step = 64)
         generated_exps = torch.zeros_like(X)
 
+        start_time = time.time()
+
         for i in range(len(iters)):
             if i == (len(iters) - 1):
                 batch_X = X[:,iters[i]:,:]
@@ -248,6 +267,10 @@ def main(args):
                         generated_exps[:,iters[i]:iters[i+1],:] = out['mask_in']
                     else:
                         generated_exps[:,iters[i]:iters[i+1],:] = out['mask_in'].transpose(0,1)
+
+        end_time = time.time()
+
+        print('Time elapsed inference TimeX, split {}: {:.6f}'.format(args.split_no, end_time - start_time))
 
     elif args.exp_method == "winit":
         from winit_wrapper import WinITWrapper, aggregate_scores # Moved here bc of import issues on Owen's side
@@ -283,10 +306,11 @@ def main(args):
             # training mode necessary for cudnn RNN backward 
             model.train()
 
-
         explainer, needs_training = get_explainer(key = args.exp_method, args = args, device = device)
 
         generated_exps = torch.zeros_like(X)
+
+        start_time = time.time()
 
         for i in trange(B):
             # Eval all explainers:
@@ -296,11 +320,17 @@ def main(args):
                 exp = explainer(model, X[:,i,:].unsqueeze(1).clone(), times[:,i].unsqueeze(-1).clone(), y[i].unsqueeze(0).clone())
             #print(exp.shape)
             generated_exps[:,i,:] = exp
+
+        end_time = time.time()
+
+        print('Time elapsed inference {}, split {}: {:.6f}'.format(args.exp_method, args.split_no, end_time - start_time))
     
     if args.savepath is not None: # Save based on provided location
         torch.save(generated_exps, args.savepath)
     
     results_dict = ground_truth_xai_eval(generated_exps, gt_exps)
+    iou_dict = ground_truth_IoU(generated_exps, gt_exps)
+    results_dict.update(iou_dict)
 
     # Show all results:
     print('Results for {} explainer on {} with split={}'.format(args.exp_method, args.dataset, args.split_no))
@@ -314,7 +344,7 @@ if __name__ == '__main__':
     parser.add_argument('--exp_method', type = str, help = "Options: ['ig', 'dyna', 'winit', 'ours']")
     parser.add_argument('--dataset', type = str)
     parser.add_argument('--split_no', default = 1, type=int)
-    parser.add_argument('--model_path', type = str, help = 'only time series transformer right now')
+    parser.add_argument('--model_path', type = str, help = 'path to model')
     parser.add_argument('--model_type', type = str, default="transformer", choices=["transformer", "cnn", "lstm"])
     parser.add_argument('--org_v', action = 'store_true')
     parser.add_argument('--data_path', default="/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/", type = str, help = 'path to datasets root')
