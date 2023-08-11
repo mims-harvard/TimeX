@@ -1,4 +1,4 @@
-import argparse, os
+import argparse, os, time
 from pathlib import Path
 import torch
 import numpy as np
@@ -103,6 +103,8 @@ def main(args):
             iters = torch.arange(0, B, step = 64)
             generated_exps = torch.zeros_like(X)
 
+            start_time = time.time()
+
             for i in range(len(iters)):
                 if i == (len(iters) - 1):
                     batch_X = X[:,iters[i]:,:]
@@ -125,6 +127,10 @@ def main(args):
                     else:
                         generated_exps[:,iters[i]:iters[i+1],:] = out['mask_in'].transpose(0,1)
 
+            end_time = time.time()
+
+            print('Runtime split {} TimeX: {}'.format(args.split_no, end_time - start_time))
+
         else: # Use other explainer APIs:
             model = get_model(args, X)
             model.load_state_dict(torch.load(args.model_path))
@@ -135,6 +141,8 @@ def main(args):
 
             generated_exps = torch.zeros_like(X)
 
+            start_time = time.time()
+
             for i in trange(B):
                 # Eval all explainers:
                 if args.exp_method == 'dyna': # This is a lazy solution, fix later
@@ -143,6 +151,13 @@ def main(args):
                     exp = explainer(model, X[:,i,:].unsqueeze(1).clone(), times[:,i].unsqueeze(-1).clone(), y[i].unsqueeze(0).clone())
                 #print(exp.shape)
                 generated_exps[:,i,:] = exp
+
+            end_time = time.time()
+
+            print('Runtime split {} {}: {}'.format(args.split_no, args.exp_method, end_time - start_time))
+
+        if args.runtime_exp:
+            return
 
     if args.save_exp_path is not None:
         torch.save(generated_exps, args.save_exp_path)
@@ -232,16 +247,17 @@ if __name__ == '__main__':
     parser.add_argument('--exp_path', default = None, type = str)
     parser.add_argument('--save_exp_path', default = None)
     parser.add_argument('--savedir', default = '')
+    parser.add_argument('--runtime_exp', action = 'store_true')
 
     args = parser.parse_args()
-
-    
 
     # Don't need splits here - just use one split
     if args.exp_method == 'random':
         for i in range(10):
             print('Random iter {}'.format(i))
             df = main(args)
+            if args.runtime_exp:
+                continue
             savepath = '{}_{}_sp={:d}_occlusion_results_{}.csv'.format(args.dataset, args.exp_method, args.split_no, i)
             savepath = os.path.join(args.savedir, savepath)
             print('Saving at {}'.format(savepath))
@@ -251,4 +267,5 @@ if __name__ == '__main__':
         savepath = '{}_{}_sp={:d}_occlusion_results.csv'.format(args.dataset, args.exp_method, args.split_no)
         savepath = os.path.join(args.savedir, savepath)
         df = main(args)
-        df.to_csv(savepath, index = False)
+        if not args.runtime_exp:
+            df.to_csv(savepath, index = False)

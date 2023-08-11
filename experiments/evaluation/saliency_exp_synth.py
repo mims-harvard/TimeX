@@ -14,9 +14,11 @@ from txai.utils.data import process_Synth
 from txai.utils.data.preprocess import process_MITECG, process_Boiler
 from txai.utils.data.anomaly import process_Yahoo
 from txai.synth_data.simple_spike import SpikeTrainDataset
+from txai.utils.data.preprocess import process_Epilepsy, process_PAM
 
 from txai.models.modelv6_v2 import Modelv6_v2
 from txai.models.bc_model import BCExplainModel
+from txai.models.bc_model_irreg import BCExplainModel_Irregular
 
 from txai.utils.evaluation import ground_truth_xai_eval, ground_truth_IoU
 
@@ -131,6 +133,38 @@ def get_model(args, X):
                 stronger_clf_head = False,
             )
 
+        elif args.dataset == 'epilepsy':
+            model = TransformerMVTS(
+                d_inp = X.shape[-1],
+                max_len = X.shape[0],
+                n_classes = 2,
+                nlayers = 1,
+                trans_dim_feedforward = 16,
+                trans_dropout = 0.1,
+                d_pe = 16,
+                norm_embedding = False,
+            )
+
+        elif args.dataset == 'pam':
+            model = TransformerMVTS(
+                d_inp = X.shape[2],
+                max_len = X.shape[0],
+                n_classes = 8,
+            )
+        
+        elif args.dataset == 'irreg':
+            model = TransformerMVTS(
+                d_inp = X.shape[2],
+                max_len = X.shape[0],
+                n_classes = 4,
+                trans_dim_feedforward = 128,
+                nlayers = 2,
+                trans_dropout = 0.25,
+                d_pe = 16,
+                # aggreg = 'mean',
+                #norm_embedding = True
+            )
+
         # elif args.dataset == 'anomaly':
         #     model = CNN(
         #         d_inp = val[0].shape[-1],
@@ -170,16 +204,25 @@ def main(args):
             normalize = True)
     elif Dname == 'anomaly':
         D = process_Yahoo(split_no = args.split_no, device = device, balance = False)
+    elif Dname == 'epilepsy':
+        trainEpi, val, test = process_Epilepsy(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Epilepsy/')
+    elif Dname == 'pam':
+        trainEpi, val, test = process_PAM(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/PAMAP2data/', gethalf = True)
+    elif Dname == 'irreg':
+        D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'SeqCombMVIrreg')
     
     if (Dname == 'mitecg_hard') or (Dname == 'boiler'):
         _, _, test, gt_exps = D
     # elif Dname == 'anomaly':
     #     test = D['test']
     #     gt_exps = D['gt_exps']
+    elif Dname in {'epilepsy', 'pam'}:
+        val = (val.X, val.time, val.y)
+        test = (test.X, test.time, test.y)
     else:
         test = D['test']
 
-    if Dname == 'scs_better' or Dname == 'seqcombsingle' or Dname == 'scs_inline' or Dname == 'seqcomb_mv' or Dname == 'lowvardetect' or Dname == 'anomaly':
+    if Dname == 'scs_better' or Dname == 'seqcombsingle' or Dname == 'scs_inline' or Dname == 'seqcomb_mv' or Dname == 'lowvardetect' or Dname == 'anomaly' or Dname == 'irreg':
         y = test[2]
         X = test[0][:,(y != 0),:]
         times = test[1][:,y != 0]
@@ -218,7 +261,8 @@ def main(args):
         #exit()
     else:
         X, times, y = test
-        gt_exps = D['gt_exps']
+        if Dname not in {'epilepsy', 'pam'}: 
+            gt_exps = D['gt_exps']
     T, B, d = X.shape
 
     if args.exp_method == 'ours':
@@ -226,6 +270,8 @@ def main(args):
         #print('Config', config)
         if args.org_v:
             model = Modelv6_v2(**config)
+        elif Dname == 'irreg':
+            model = BCExplainModel_Irregular(**config)
         else:
             model = BCExplainModel(**config)
         model.load_state_dict(sdict)
@@ -235,6 +281,7 @@ def main(args):
         # Keep batch size at 64:
         iters = torch.arange(0, B, step = 64)
         generated_exps = torch.zeros_like(X)
+        zx_generated = torch.zeros(X.shape[1], model.d_z)
 
         start_time = time.time()
 
@@ -247,7 +294,10 @@ def main(args):
                 batch_times = times[:,iters[i]:iters[i+1]]
 
             with torch.no_grad():
-                out = model.get_saliency_explanation(batch_X, batch_times, captum_input = False)
+                if args.savepath is None:
+                    out = model.get_saliency_explanation(batch_X, batch_times, captum_input = False)
+                else:
+                    out = model(batch_X, batch_times, captum_input = False)
 
 
             # NOTE: below capability only works with univariate for now - will need to edit after adding MV to model
@@ -257,20 +307,45 @@ def main(args):
                 else:
                     generated_exps[:,iters[i]:iters[i+1],:] = torch.stack(out['mask_in'], dim = 0).sum(dim=0).unsqueeze(-1).transpose(0,1)
             else:
-                if i == (len(iters) - 1):
-                    if batch_X.shape[-1] == 1:
-                        generated_exps[:,iters[i]:,:] = out['mask_in']
+                if args.savepath is None:
+                    if i == (len(iters) - 1):
+                        if batch_X.shape[-1] == 1:
+                            generated_exps[:,iters[i]:,:] = out['mask_in']
+                        else:
+                            generated_exps[:,iters[i]:,:] = out['mask_in'].transpose(0,1)
                     else:
-                        generated_exps[:,iters[i]:,:] = out['mask_in'].transpose(0,1)
+                        if batch_X.shape[-1] == 1:
+                            generated_exps[:,iters[i]:iters[i+1],:] = out['mask_in']
+                        else:
+                            generated_exps[:,iters[i]:iters[i+1],:] = out['mask_in'].transpose(0,1)
                 else:
-                    if batch_X.shape[-1] == 1:
-                        generated_exps[:,iters[i]:iters[i+1],:] = out['mask_in']
+                    if i == (len(iters) - 1):
+                        # if batch_X.shape[-1] == 1:
+                        #     generated_exps[:,iters[i]:,:] = out['mask_logits']
+                        #     zx_generated[:,iters[i]:] = out['z_mask_list']
+                        # else:
+                        generated_exps[:,iters[i]:,:] = out['mask_logits'].transpose(0,1)
+                        zx_generated[iters[i]:,:] = out['z_mask_list']
                     else:
-                        generated_exps[:,iters[i]:iters[i+1],:] = out['mask_in'].transpose(0,1)
+                        # if batch_X.shape[-1] == 1:
+                        #     generated_exps[:,iters[i]:iters[i+1],:] = out['mask_logits']
+                        #     zx_generated[:,iters[i]:iters[i+1]] = out['z_mask_list']
+                        # else:
+                        generated_exps[:,iters[i]:iters[i+1],:] = out['mask_logits'].transpose(0,1)
+                        zx_generated[iters[i]:iters[i+1],:] = out['z_mask_list']
 
         end_time = time.time()
 
         print('Time elapsed inference TimeX, split {}: {:.6f}'.format(args.split_no, end_time - start_time))
+
+        if args.savepath is not None:
+            # Get zp:
+            zp = model.prototypes.detach().clone().cpu()
+            zx = zx_generated.detach().clone().cpu()
+            Xsave = X.detach().clone().cpu()
+            ysave = y.detach().clone().cpu()
+            gexp = generated_exps.detach().clone().cpu()
+            torch.save((Xsave,gexp,ysave,zx,zp), args.savepath) # Saves all needed info
 
     elif args.exp_method == "winit":
         from winit_wrapper import WinITWrapper, aggregate_scores # Moved here bc of import issues on Owen's side
@@ -291,7 +366,12 @@ def main(args):
         # and (batch, num_times) for times
         X_perm = X.permute(1, 2, 0)
         times_perm = times.permute(1, 0)
+        start_time = time.time()
         attribution = winit.attribute(X_perm, times_perm)
+        end_time = time.time()
+        print('Time', end_time - start_time)
+        if args.dataset == 'epilepsy' or args.dataset == 'pam':
+            exit()
         # paper notes best performance with mean aggregation
         generated_exps = torch.from_numpy(aggregate_scores(attribution, "mean"))
         # permute (batch, features, times) back to (times, batch, features)
@@ -325,10 +405,13 @@ def main(args):
 
         print('Time elapsed inference {}, split {}: {:.6f}'.format(args.exp_method, args.split_no, end_time - start_time))
     
-    if args.savepath is not None: # Save based on provided location
-        torch.save(generated_exps, args.savepath)
+        if args.savepath is not None: # Save based on provided location
+            torch.save(generated_exps, args.savepath)
     
-    results_dict = ground_truth_xai_eval(generated_exps, gt_exps)
+    if Dname == 'irreg':
+        results_dict = ground_truth_xai_eval(generated_exps, gt_exps, times = times.cpu())
+    else:
+        results_dict = ground_truth_xai_eval(generated_exps, gt_exps)
     iou_dict = ground_truth_IoU(generated_exps, gt_exps)
     results_dict.update(iou_dict)
 

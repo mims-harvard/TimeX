@@ -197,6 +197,12 @@ class TransformerMVTS(nn.Module):
         if len(src.shape) < 3:
             src = src.unsqueeze(dim=1)
 
+        if (src_mask is None) and torch.any(times < -1e5) and (attn_mask is None):
+            src_mask = (times < -1e5).transpose(0,1)
+            # if attn_mask is not None:
+            #     attn_mask *= src_mask.unsqueeze(-1).repeat(1, 1, attn_mask.shape[-1])
+            #     src_mask = None
+
         if show_sizes:
             print('captum input = {}'.format(captum_input), src.shape, 'time:', times.shape)
 
@@ -261,7 +267,11 @@ class TransformerMVTS(nn.Module):
 
             if self.aggreg == 'mean':
                 lengths2 = lengths.unsqueeze(1)
-                output = torch.sum(output_preagg, dim=0) / (lengths2 + 1)
+                if src_mask is not None:
+                    #import ipdb; ipdb.set_trace()
+                    output = torch.sum(output_preagg * (1 - src_mask.transpose(0,1).unsqueeze(-1).repeat(1, 1, output_preagg.shape[-1]).float()), dim=0) / (lengths2 + 1)
+                else:
+                    output = torch.sum(output_preagg, dim=0) / (lengths2 + 1)
             elif self.aggreg == 'max':
                 output, _ = torch.max(output_preagg, dim=0)
 
@@ -273,8 +283,6 @@ class TransformerMVTS(nn.Module):
 
         if self.norm_embedding and aggregate:
             output = F.normalize(output, dim = -1)
-
-        # TODO: static if aggregate is False
 
         if get_both_agg_full:
             return output, output_preagg

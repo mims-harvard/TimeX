@@ -48,28 +48,38 @@ class LabelConsistencyLoss(torch.nn.Module):
         '''
         
         #embeddings = F.normalize(embeddings.unsqueeze(1), dim = -1) # Add 1 to embeddings dimension
-        mask_labels = mask_labels.softmax(dim=-1)
-        full_labels = full_labels.softmax(dim=-1)
+        # mask_labels = mask_labels.softmax(dim=-1)
+        # full_labels = full_labels.softmax(dim=-1)
+        mask_labels_ls = mask_labels.log_softmax(dim=-1)
+        full_labels_ls = full_labels.log_softmax(dim=-1)
+
+        # if torch.any(torch.isnan(mask_labels_ls)):
+        #     print("NAN mask_labels")
+        #     import ipdb; ipdb.set_trace()
+        # assert not torch.any(torch.isnan(full_labels_ls)), "NAN full_labels"
+
 
         # Enumerate batch:
-        combs = torch.combinations(torch.arange(mask_labels.shape[0]), r = 2, with_replacement = False)
+        combs = torch.combinations(torch.arange(mask_labels_ls.shape[0]), r = 2, with_replacement = False)
 
-        mask_labels_expanded_lhs = mask_labels[combs[:,0],:]
-        mask_labels_expanded_rhs = mask_labels[combs[:,1],:]
+        mask_labels_expanded_lhs = mask_labels_ls[combs[:,0],:]
+        mask_labels_expanded_rhs = mask_labels_ls[combs[:,1],:]
 
-        full_labels_expanded_lhs = full_labels[combs[:,0],:]    
-        full_labels_expanded_rhs = full_labels[combs[:,1],:]
+        full_labels_expanded_lhs = full_labels_ls[combs[:,0],:]    
+        full_labels_expanded_rhs = full_labels_ls[combs[:,1],:]
 
         # print('embeddings', embeddings.shape)
         # print('pos', positives.shape)
         # print('negatives', negatives.shape)
 
         # Sim to positives:
-        score_mask = js_divergence(mask_labels_expanded_lhs, mask_labels_expanded_rhs)
-
-        score_full = js_divergence(full_labels_expanded_lhs, full_labels_expanded_rhs)
+        score_mask = js_divergence(mask_labels_expanded_lhs, mask_labels_expanded_rhs, log_already = True)
+        score_full = js_divergence(full_labels_expanded_lhs, full_labels_expanded_rhs, log_already = True)
 
         score = (score_mask - score_full).pow(2).mean()
+        #score = (score_mask -  score_full).abs().mean()
+
+        #import ipdb; ipdb.set_trace()
 
         # print('pos score', sim_pos.exp().sum(dim=-1))
         # print('neg score', sim_neg.exp().sum(dim=-1))
@@ -79,6 +89,26 @@ class LabelConsistencyLoss(torch.nn.Module):
         # if get_all_scores:
         #     return score.mean(), sim_pos.exp().sum(dim=-1), sim_neg.exp().sum(dim=-1)
         # else:
+        return score
+
+class LabelConsistencyLoss_Forecasting(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+    def forward(self, mask_pred, full_pred):
+        # Expand via combs, same as in original LabelConsistency loss
+        combs = torch.combinations(torch.arange(mask_pred.shape[0]), r = 2, with_replacement = False)
+
+        mask_pred_expanded_lhs = mask_pred[combs[:,0],:]
+        mask_pred_expanded_rhs = mask_pred[combs[:,1],:]
+
+        full_pred_expanded_lhs = full_pred[combs[:,0],:]    
+        full_pred_expanded_rhs = full_pred[combs[:,1],:]
+
+        mask_pred_score = (mask_pred_expanded_lhs - mask_pred_expanded_rhs).pow(2).mean(dim=1)
+        full_pred_score = (full_pred_expanded_lhs - full_pred_expanded_rhs).pow(2).mean(dim=1)
+
+        score = (mask_pred_score - full_pred_score).pow(2).mean()
+
         return score
 
 class LabelConsistencyLoss_LS(torch.nn.Module):
@@ -181,6 +211,8 @@ class EmbedConsistencyLoss(torch.nn.Module):
 
         if self.normalize_distance:
             score /= original_sim_mat.var()
+
+        #import ipdb; ipdb.set_trace()
 
         return score 
 

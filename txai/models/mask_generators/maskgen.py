@@ -58,6 +58,17 @@ class MaskGenerator(nn.Module):
             self.time_prob_net = nn.Linear(d_z, 2)
         self.pos_encoder = PositionalEncodingTF(d_pe, max_len, MAX)
 
+        self.init_weights()
+
+    def init_weights(self):
+        def iweights(m):
+            if isinstance(m, nn.Linear):
+                torch.nn.init.xavier_uniform(m.weight)
+                m.bias.data.fill_(0.01)
+
+        self.time_prob_net.apply(iweights)
+        self.pre_agg_net.apply(iweights)
+
     def reparameterize(self, total_mask):
 
         if self.d_inp == 1:
@@ -82,8 +93,13 @@ class MaskGenerator(nn.Module):
 
     def forward(self, z_seq, src, times, get_agg_z = False):
 
+        if torch.any(times < -1e5):
+            tgt_mask = (times < -1e5).transpose(0,1)
+        else:
+            tgt_mask = None
+
         x = torch.cat([src, self.pos_encoder(times)], dim = -1)
-        z_seq_dec = self.mask_decoder(tgt = x, memory = z_seq)
+        z_seq_dec = self.mask_decoder(tgt = x, memory = z_seq, tgt_key_padding_mask = tgt_mask)
         z_pre_agg = self.pre_agg_net(z_seq_dec)
 
         p_time = self.time_prob_net(z_seq_dec)

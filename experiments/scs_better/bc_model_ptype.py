@@ -33,6 +33,12 @@ def naming_convention(args):
         name = "bc_nola_split={}.pt"
     elif args.no_con:
         name = "bc_nocon_split={}.pt"
+    elif args.cnn:
+        name = "bc_cnn_split={}.pt"
+    elif args.lstm:
+        name = "bc_lstm_split={}.pt"
+    elif args.rvalue is not None:
+        name = "bc_r={:.2f}".format(args.rvalue) + "_split={}.pt"
     else:
         name = 'bc_full_split={}.pt'
     
@@ -44,7 +50,17 @@ def naming_convention(args):
 
 def main(args):
 
-    tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/scs_better/formal_models/Scomb_transformer_split={}.pt"
+    #tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/scs_better/formal_models/Scomb_transformer_split={}.pt"
+
+    if args.lstm:
+        arch = 'lstm'
+        tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/scs_better/models/Scomb_lstm_split={}.pt"
+    elif args.cnn:
+        arch = 'cnn'
+        tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/scs_better/models/Scomb_cnn_split={}.pt"
+    else:
+        arch = 'transformer'
+        tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/scs_better/formal_models/Scomb_transformer_split={}.pt"
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -77,7 +93,7 @@ def main(args):
 
     targs = transformer_default_args
 
-    for i in range(1, 6):
+    for i in range(4, 6):
         D = process_Synth(split_no = i, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleBetter')
         dset = DatasetwInds(D['train_loader'].X.to(device), D['train_loader'].times.to(device), D['train_loader'].y.to(device))
         train_loader = torch.utils.data.DataLoader(dset, batch_size = 64, shuffle = True)
@@ -101,6 +117,8 @@ def main(args):
             ptype_assimilation = True, 
             side_assimilation = True,
             use_ste = (not args.no_ste),
+            archtype = arch,
+            cnn_dim = 128
         )
 
         loss_weight_dict = {
@@ -113,10 +131,11 @@ def main(args):
             max_len = 200,
             n_classes = 4,
             n_prototypes = 50,
-            gsat_r = 0.5,
+            gsat_r = 0.5 if (args.rvalue is None) else args.rvalue,
             transformer_args = targs,
             ablation_parameters = abl_params,
-            loss_weight_dict = loss_weight_dict
+            loss_weight_dict = loss_weight_dict,
+            masktoken_stats = (mu, std),
         )
 
         model.encoder_main.load_state_dict(torch.load(tencoder_path.format(i)))
@@ -177,7 +196,10 @@ if __name__ == '__main__':
     ablations.add_argument('--no_con', action = 'store_true', help = 'No consistency loss - just label')
     # Note if you don't activate any of them, it just trains the normal method
 
-    parser.add_argument('--r', type = float, default = 0.5, help = 'r for GSAT loss')
+    ablations.add_argument('--lstm', action = 'store_true', help = 'Run w LSTM')
+    ablations.add_argument('--cnn', action = 'store_true')
+
+    parser.add_argument('--rvalue', type = float, default = None, help = 'r for GSAT loss')
     parser.add_argument('--lam', type = float, default = 1.0, help = 'lambda between label alignment and consistency loss')
 
     args = parser.parse_args()

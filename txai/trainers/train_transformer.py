@@ -54,6 +54,7 @@ def train(
         replace_method = None,
         print_freq = 10,
         clip_grad = None,
+        detect_irreg = False,
         ):
     '''
     Loader should output (B, d, T) - in style of captum input
@@ -99,11 +100,11 @@ def train(
 
             #print(X.detach().clone().cpu().numpy())
             #print(times.detach().clone().cpu().numpy())
-
+            
+            # if detect_irreg:
+            #     src_mask = (times == 0)
+            #     out = model(X, times, captum_input = True, show_sizes = show_sizes, src_mask = src_mask)
             out = model(X, times, captum_input = True, show_sizes = show_sizes)
-
-            # print('out', out.detach().clone().cpu().numpy())
-            # print('y', y.detach().clone().cpu().numpy())
 
             optimizer.zero_grad()
             loss = criterion(out, y)
@@ -158,6 +159,9 @@ def train(
                 else:
                     pred, _ = batch_forwards_TransformerMVTS(model, X, times, batch_size = validate_by_step)
             else:
+                # if detect_irreg:
+                #     pred = model(X, times, show_sizes = show_sizes, src_mask = src_mask)
+                # else:
                 pred = model(X, times, show_sizes = show_sizes)
             val_loss = criterion(pred, y)
 

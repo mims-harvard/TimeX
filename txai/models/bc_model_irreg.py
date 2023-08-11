@@ -55,7 +55,7 @@ default_loss_weights = {
     'connect': 1.0,
 }
 
-class BCExplainModel(nn.Module):
+class BCExplainModel_Irregular(nn.Module):
     '''
     Model has full options through config
         - Use for ablations - configuration supported through config load
@@ -72,7 +72,7 @@ class BCExplainModel(nn.Module):
             tau = 1.0,
             masktoken_stats = None,
         ):
-        super(BCExplainModel, self).__init__()
+        super(BCExplainModel_Irregular, self).__init__()
 
         self.d_inp = d_inp
         self.max_len = max_len
@@ -152,6 +152,12 @@ class BCExplainModel(nn.Module):
                 nn.Linear(self.d_z, n_classes),
             )
 
+            for module in self.z_e_predictor.modules():
+                if isinstance(module, nn.Linear):
+                    torch.nn.init.uniform_(module.weight, -0.5, 0.5)
+                    if module.bias is not None:
+                        module.bias.data.zero_()
+
         # Setup loss functions:
         self.gsat_loss_fn = GSATLoss(r = self.gsat_r)
         self.connected_loss = ConnectLoss()
@@ -184,9 +190,13 @@ class BCExplainModel(nn.Module):
 
         # Need sensor-level masking if multi-variate:
         if self.d_inp > 1 or (self.ablation_parameters.archtype != 'transformer'):
-            exp_src, ste_mask_attn = self.multivariate_mask(src, ste_mask)
+            src_mask = (times < -1e5).float()
+            exp_src, ste_mask_attn = self.multivariate_mask(src, ste_mask, src_mask)
         else:
             # Easy, simply transform to attention mask:
+            if torch.any(times < -1e5):
+                src_mask = (times < -1e5).transpose(0,1)
+                ste_mask = ste_mask * (src_mask).float()
             ste_mask_attn = transform_to_attn_mask(ste_mask)
             exp_src = src
 
@@ -221,6 +231,7 @@ class BCExplainModel(nn.Module):
             'smooth_src': src,                                  # Keep for visualizers
             'all_z': (z_main, z_mask),
             'z_mask_list': z_mask,
+            'times': times,
         }
 
         if self.ablation_parameters.ptype_assimilation:
@@ -242,6 +253,11 @@ class BCExplainModel(nn.Module):
 
         mask_in, ste_mask = self.mask_generator(z_seq, src, times)
 
+        ##import ipdb; ipdb.set_trace()
+
+        texpand = (times > 1e-5).float().unsqueeze(-1).repeat(1, 1, mask_in.shape[-1])
+        mask_in = mask_in * texpand
+
         out_dict = {
             'smooth_src': src,
             'mask_in': mask_in.transpose(0,1),
@@ -262,10 +278,12 @@ class BCExplainModel(nn.Module):
 
         return pred_mask
 
-    def multivariate_mask(self, src, ste_mask):
+    def multivariate_mask(self, src, ste_mask, src_mask):
         # First apply mask directly on input:
         baseline = self._get_baseline(B = src.shape[1])
-        ste_mask_rs = ste_mask.transpose(0,1)
+        src_mask_rs = src_mask.unsqueeze(-1).repeat(1, 1, ste_mask.shape[-1])
+        ##import ipdb; ipdb.set_trace()
+        ste_mask_rs = ste_mask.transpose(0,1) * (1 - src_mask_rs)
         if len(ste_mask_rs.shape) == 2:
             ste_mask_rs = ste_mask_rs.unsqueeze(-1)
         # print('ste_mask_rs', ste_mask_rs.shape)
@@ -274,7 +292,8 @@ class BCExplainModel(nn.Module):
         src_masked = src * ste_mask_rs + (1 - ste_mask_rs) * baseline
 
         # Then deduce attention mask by multiplication across sensors:
-        attention_ste_mask = transform_to_attn_mask(ste_mask)
+        #attention_ste_mask = transform_to_attn_mask(ste_mask * (1 - src_mask_rs.transpose(0,1)))
+        attention_ste_mask = transform_to_attn_mask((1 - src_mask_rs.transpose(0,1)))
 
         return src_masked, attention_ste_mask
 
@@ -327,13 +346,18 @@ class BCExplainModel(nn.Module):
         return samp
 
     def compute_loss(self, output_dict):
-        mask_loss = self.loss_weight_dict['gsat'] * self.gsat_loss_fn(output_dict['mask_logits']) + self.loss_weight_dict['connect'] * self.connected_loss(output_dict['mask_logits'])
+        # Need to exclude components that are masked out as a result of irregular time series
+        times_expand = output_dict['times'].unsqueeze(-1).repeat(1, 1, output_dict['mask_logits'].shape[-1])
+        inp_to_gsat_mask = (times_expand > -1e5)
+        assert times_expand.shape == output_dict['mask_logits'].shape
+        inp_to_gsat = output_dict['mask_logits'][inp_to_gsat_mask]
+        gsat_comp = self.loss_weight_dict['gsat'] * self.gsat_loss_fn(inp_to_gsat)
+        mask_loss = gsat_comp 
         return mask_loss
 
     def save_state(self, path):
         tosave = (self.state_dict(), self.config)
         torch.save(tosave, path)
-
 
     def set_config(self):
         self.config = {

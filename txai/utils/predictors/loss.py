@@ -235,7 +235,9 @@ class GSATLoss(nn.Module):
         if torch.any(att < 0):
             print('ALERT - att less than 0')
             exit()
+        assert (att < 0).sum() == 0
         info_loss = (att * torch.log(att/self.r + 1e-6) + (1-att) * torch.log((1-att)/(1-self.r + 1e-6) + 1e-6)).mean()
+        ##print(info_loss)
         if torch.any(torch.isnan(info_loss)):
             print('INFO LOSS NAN')
             exit()

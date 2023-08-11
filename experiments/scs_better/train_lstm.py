@@ -17,7 +17,7 @@ clf_criterion = Poly1CrossEntropyLoss(
 )
 
 for i in range(1, 6):
-    D = process_Synth(split_no = i, device = device, base_path = 'datasets/drive/datasets_and_models/SeqCombSingleBetter')
+    D = process_Synth(split_no = i, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/SeqCombSingleBetter')
     train_loader = torch.utils.data.DataLoader(D['train_loader'], batch_size = 64, shuffle = True)
 
     val, test = D['val'], D['test']

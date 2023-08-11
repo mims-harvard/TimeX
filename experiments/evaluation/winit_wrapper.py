@@ -12,6 +12,7 @@ import numpy as np
 from txai.utils.data import process_Synth
 from txai.utils.data.preprocess import process_MITECG
 from txai.synth_data.simple_spike import SpikeTrainDataset
+from txai.utils.data.preprocess import process_Epilepsy, process_PAM
 from txai.baselines.WinIT.winit.explainer.winitexplainers import WinITExplainer
 from txai.baselines.WinIT.winit.utils import aggregate_scores
 
@@ -145,6 +146,10 @@ def train_generator(args):
         D = process_MITECG(split_no = args.split_no, device = device, hard_split = True, need_binarize = True, exclude_pac_pvc = True, base_path = Path(args.data_path) / 'MITECG-Hard')
     elif Dname == 'lowvardetect':
         D = process_Synth(split_no = args.split_no, device = device, base_path = Path(args.data_path) / 'LowVarDetect')
+    elif Dname == 'epilepsy':
+        trainEpi, val, test = process_Epilepsy(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/Epilepsy/')
+    elif Dname == 'pam':
+        trainEpi, val, test = process_PAM(split_no = args.split_no, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/PAMAP2data/', gethalf = True)
 
     winit_path = Path(args.models_path) / f"winit_split={args.split_no}/"
 
@@ -155,6 +160,12 @@ def train_generator(args):
         train_loader = [(train_loader.X[:, i], train_loader.time[:, i], train_loader.y[i]) for i in range(train_loader.X.shape[1])]
         val = (val.X, val.time, val.y)
         test = (test.X, test.time, test.y)
+    elif Dname in {'epilepsy', 'pam'}:
+        val = (val.X, val.time, val.y)
+        test = (test.X, test.time, test.y)
+        #trainX = trainEpi.X
+        #train_loader, val, test, _ = D
+        train_loader = [(trainEpi.X[:, i], trainEpi.time[:, i], trainEpi.y[i]) for i in range(trainEpi.X.shape[1])]
     else:
         train_loader, val, test = D["train_loader"], D["val"], D["test"]
 
@@ -174,7 +185,10 @@ def train_generator(args):
     train_dl = DataLoader(train_ds, batch_size=256, shuffle=True)
     val_dl = DataLoader(val_ds, batch_size=256)
     print("training generators...")
+    start_time = time()
     results = winit.train_generators(train_loader=train_dl, valid_loader=val_dl, num_epochs=args.epochs)
+    end_time = time()
+    print('Time', end_time - start_time)
 
     plt.plot(results.train_loss_trends[0], label="train_loss")
     plt.plot(results.valid_loss_trends[0], label="valid_loss")
@@ -195,3 +209,4 @@ if __name__ == "__main__":
     for split_no in range(1, 6):
         args.split_no = split_no
         train_generator(args)
+        exit() # TEMP REMOVE LATER

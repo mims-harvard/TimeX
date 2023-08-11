@@ -79,6 +79,10 @@ def train_mv6_consistency(
 
             optimizer.zero_grad()
 
+            # if detect_irreg:
+            #     src_mask = (X < 1e-7)
+            #     out_dict = model(X, times, captum_input = True)
+
             out_dict = model(X, times, captum_input = True)
             out = out_dict['pred']
             ste_mask = out_dict['ste_mask']
@@ -168,14 +172,25 @@ def train_mv6_consistency(
             # print('clf', clf_loss)
             # print('exp', exp_loss)
             # print('sim', sim_loss)
-            #print('loss', loss)
+            # print('loss', loss)
+
+            #import ipdb; ipdb.set_trace()
 
             if clip_norm:
                 #print('Clip')
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
+            # print('loss', loss.item())
+            # exit()
+
             loss.backward()
             optimizer.step()
+
+            # for name, param in model.named_parameters():
+            #     if param.grad is not None:
+            #         if torch.any(torch.isnan(param.grad)):
+            #             #print(name, torch.isnan(param.grad).sum())
+            #             print(name, param.grad)
 
             cum_sparse.append(((ste_mask).sum() / ste_mask.flatten().shape[0]).item())
             cum_clf_loss.append(clf_loss.detach().item())
@@ -232,7 +247,8 @@ def train_mv6_consistency(
                 cond = (met > best_val_metric)
         if cond:
             best_val_metric = met
-            model.save_state(save_path)
+            if save_path is not None:
+                model.save_state(save_path)
             best_epoch = epoch
             print('Save at epoch {}: Metric={:.4f}'.format(epoch, met))
 

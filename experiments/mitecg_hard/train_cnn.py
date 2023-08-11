@@ -36,14 +36,6 @@ for i in range(1, 6):
     val = (val.X, val.time, val.y)
     test = (test.X, test.time, test.y)
 
-    # print((test[-1] == 0).sum())
-    # print((test[-1] == 1).sum())
-    # print((test[-1] == 0).sum())
-    # print((test[-1] == 1).sum())
-    # print((trainEpi.y == 0).sum())
-    # print((trainEpi.y == 1).sum())
-    # exit()
-
     model = CNN(
         d_inp = val[0].shape[-1],
         n_classes = 2,

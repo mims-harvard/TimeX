@@ -22,6 +22,46 @@ from umap import UMAP
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+def concat_all_dicts(dlist):
+    # Marries together all dictionaries
+    # Will change based on output from model
+
+    # print('dlist', dlist[0])
+    # exit()
+
+    mother_dict = {k:[] for k in dlist[0].keys()}
+
+    is_tensor_list = []
+
+    for d in dlist:
+        for k in d.keys():
+            if k == 'smooth_src':
+                mother_dict[k].append(torch.stack(d[k], dim = -1))
+            else:   
+                mother_dict[k].append(d[k])
+
+
+    mother_dict['pred'] = torch.cat(mother_dict['pred'], dim = 0).cpu()
+    mother_dict['pred_mask'] = torch.cat(mother_dict['pred_mask'], dim = 0).cpu()
+    mother_dict['mask_logits'] = torch.cat(mother_dict['mask_logits'], dim = 0).cpu()
+    mother_dict['concept_scores'] = torch.cat(mother_dict['concept_scores'], dim = 0).cpu()
+    mother_dict['ste_mask'] = torch.cat(mother_dict['ste_mask'], dim = 0).cpu()
+    # [[(), ()], ... 24]
+    mother_dict['smooth_src'] = torch.cat(mother_dict['smooth_src'], dim = 1).cpu() # Will be (T, B, d, ne)
+    mother_dict['p'] = torch.cat(mother_dict['p'], dim = 0).cpu()
+
+    L = len(mother_dict['all_z'])
+    mother_dict['all_z'] = (
+        torch.cat([mother_dict['all_z'][i][0] for i in range(L)], dim = 0).cpu(), 
+        torch.cat([mother_dict['all_z'][i][1] for i in range(L)], dim = 0).cpu()
+    )
+
+    mother_dict['z_mask_list'] = torch.cat(mother_dict['z_mask_list'], dim = 0).cpu()
+
+    mother_dict['concept_selections_inds'] = []
+
+    return mother_dict
+
 def main(model, test, args):
     need_ptypes = False
     if isinstance(model, BCExplainModel):
@@ -36,11 +76,41 @@ def main(model, test, args):
     y = y[inds]
 
     # Load test embeddings:
-    out = model(X, times)
+    # Run through in batches:
+
+    B = X.shape[1]
+    iters = torch.arange(0, B, step = 64)
+    out_list = []
+
+    for i in range(len(iters)):
+        if i == (len(iters) - 1):
+            batch_X = X[:,iters[i]:,:]
+            batch_times = times[:,iters[i]:]
+        else:
+            batch_X = X[:,iters[i]:iters[i+1],:]
+            batch_times = times[:,iters[i]:iters[i+1]]
+
+        with torch.no_grad():
+            out = model(batch_X, batch_times, captum_input = False)
+
+        # for k, v in out.items():
+        #     print('{}: {}'.format(k, type(v)))
+        #     if k == 'concept_selections_inds':
+        #         continue
+        #     if isinstance(v, torch.Tensor):
+        #         print('Tensor shape', v.shape)
+        #     else:
+        #         print('Inner shape:', v[0].shape)
+        #     print('-' * 50)
+
+        out_list.append(out)
+
+
+    out = torch.cat([o['z_mask_list'] for o in out_list], dim = 0)
 
     #z_test_org = out['z_mask_list']
     #z_test = z_test_org.transpose(1, 2).flatten(0, 1) # Shape (B, d_z, ne) -> (B x ne, d_z)
-    z_test = F.normalize(out['z_mask_list'], dim = -1)
+    z_test = F.normalize(out, dim = -1)
     z_test_np = z_test.detach().cpu().numpy()
 
     if need_ptypes:
@@ -150,6 +220,6 @@ if __name__ == '__main__':
     model.eval()
     model.to(device)
 
-    eval_model(model, test)
+    #eval_model(model, test)
 
     main(model, test, args)

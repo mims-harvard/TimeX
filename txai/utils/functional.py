@@ -33,12 +33,17 @@ def transform_to_attn_mask(linear_mask):
     attn_mask = attn_mask * attn_mask.transpose(1, 2) # Flip and multiply
     return attn_mask
 
-def js_divergence(p: Tensor, q: Tensor) -> Tensor:
+def js_divergence(p: Tensor, q: Tensor, log_already = False) -> Tensor:
     # JSD(P || Q)
     # Assumes both have alread
     # Implementation borrowed from: https://kornia.readthedocs.io/en/latest/_modules/kornia/losses/divergence.html
-    m = 0.5 * (p + q)
-    return (0.5 * F.kl_div(p.log(), m, reduction = 'mean') + 0.5 * F.kl_div(q.log(), m, reduction = 'mean'))
+    
+    if log_already:
+        m = 0.5 * (torch.exp(p) + torch.exp(q))
+        return (0.5 * F.kl_div(p, m, reduction = 'mean') + 0.5 * F.kl_div(q, m, reduction = 'mean'))
+    else:
+        m = 0.5 * (p + q)
+        return (0.5 * F.kl_div(p.log(), m, reduction = 'mean') + 0.5 * F.kl_div(q.log(), m, reduction = 'mean'))
 
 def js_divergence_logsoftmax(p: Tensor, q: Tensor) -> Tensor:
     # JSD(P || Q)

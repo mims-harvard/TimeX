@@ -277,9 +277,10 @@ class Transformer(InferenceModule):
 
         self.debug = debug
 
-    def forward(self, x, get_embedding=False):
+    def forward(self, x, get_embedding=False, get_pos_input = False):
         # encoder
-        e = self.encs[0](self.pos(self.enc_dropout(self.enc_input_fc(x))))
+        pos_input = self.pos(self.enc_dropout(self.enc_input_fc(x)))
+        e = self.encs[0](pos_input)
 
         for enc in self.encs[1:]:
             e = enc(e)
@@ -296,7 +297,10 @@ class Transformer(InferenceModule):
         x = self.out_fc(d.flatten(start_dim=1))
         out = torch.reshape(x, (x.shape[0], -1, self.output_len))
         if get_embedding:
-            return out, e
+            if get_pos_input:
+                return out, e, pos_input
+            else:
+                return out, e
         else:
             return out
 

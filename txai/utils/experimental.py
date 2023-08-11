@@ -16,7 +16,7 @@ from txai.models.encoders.transformer_simple import TransformerMVTS
 # Import all explainers:
 from txai.baselines import TSR
 from captum.attr import IntegratedGradients, Saliency
-from txai.utils.baseline_comp.run_dynamask import screen_dynamask, run_dynamask
+from txai.utils.baseline_comp.run_dynamask import run_dynamask
 
 def get_explainer(key, args, device = None):
 

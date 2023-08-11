@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from txai.models.encoders.transformer_simple import TransformerMVTS
 from txai.utils.experimental import get_explainer
 from txai.vis.vis_saliency import vis_one_saliency
+from txai.models.encoders.simple import CNN, LSTM
 from txai.utils.data import process_Synth
 from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.data.preprocess import process_Epilepsy, process_MITECG
@@ -15,26 +16,48 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 def get_model(args, X):
 
     if args.dataset == 'scs_better':
-        model = TransformerMVTS(
-            d_inp = X.shape[-1],
-            max_len = X.shape[0],
-            n_classes = 4,
-            nlayers = 2,
-            nhead = 1,
-            trans_dim_feedforward = 64,
-            trans_dropout = 0.25,
-            d_pe = 16,
-        )
+        if args.arch == 'cnn':
+            model = CNN(
+                d_inp = X.shape[-1],
+                n_classes = 4,
+            )
+        elif args.arch == 'lstm':
+            model = LSTM(
+                d_inp = X.shape[-1],
+                n_classes = 4,
+            )
+        else:
+            model = TransformerMVTS(
+                d_inp = X.shape[-1],
+                max_len = X.shape[0],
+                n_classes = 4,
+                nlayers = 2,
+                nhead = 1,
+                trans_dim_feedforward = 64,
+                trans_dropout = 0.25,
+                d_pe = 16,
+            )
 
     elif args.dataset == 'freqshape':
-        model = TransformerMVTS(
-            d_inp = X.shape[-1],
-            max_len = X.shape[0],
-            n_classes = 4,
-            trans_dim_feedforward = 16,
-            trans_dropout = 0.1,
-            d_pe = 16,
-        )
+        if args.arch == 'cnn':
+            model = CNN(
+                d_inp = X.shape[-1],
+                n_classes = 4,
+            )
+        elif args.arch == 'lstm':
+            model = LSTM(
+                d_inp = X.shape[-1],
+                n_classes = 4,
+            )
+        else:
+            model = TransformerMVTS(
+                d_inp = X.shape[-1],
+                max_len = X.shape[0],
+                n_classes = 4,
+                trans_dim_feedforward = 16,
+                trans_dropout = 0.1,
+                d_pe = 16,
+            )
     
     elif args.dataset == 'epilepsy':
         model = TransformerMVTS(
@@ -172,6 +195,7 @@ if __name__ == '__main__':
     parser.add_argument('--class_num', default = None, type = int)
     parser.add_argument('--sample_seed', default = None, type = int)
     parser.add_argument('--savepdf', default = None)
+    parser.add_argument('--arch', default = None)
 
     args = parser.parse_args()
 

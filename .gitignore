@@ -21,3 +21,6 @@ experiments/viz/old_scripts/
 *conv_t_cpu.py
 experiments/scs_better/experiments_04-17/*
 experiments/scs_better/ptype_exps/*
+experiments/anomaly/*
+experiments/src_pdf/*
+txai/utils/data/anomaly.py

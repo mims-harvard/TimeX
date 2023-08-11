@@ -38,6 +38,9 @@ def naming_convention(args):
         name = "bc_cnn_split={}.pt"
     elif args.lstm:
         name = "bc_lstm_split={}.pt"
+    elif args.runtime_exp:
+        name = None
+        return name
     else:
         name = 'bc_full_retry_split={}.pt'
     
@@ -209,6 +212,7 @@ if __name__ == '__main__':
     ablations.add_argument('--no_con', action = 'store_true', help = 'No consistency loss - just label')
     ablations.add_argument('--lstm', action = 'store_true')
     ablations.add_argument('--cnn', action = 'store_true')
+    ablations.add_argument('--runtime_exp', action = 'store_true')
     # Note if you don't activate any of them, it just trains the normal method
 
     parser.add_argument('--r', type = float, default = 0.5, help = 'r for GSAT loss')

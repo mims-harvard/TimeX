@@ -137,6 +137,7 @@ if __name__ == '__main__':
     print('Loading model at {}'.format(args.model_path))
     sdict, config = torch.load(args.model_path)
     #print('Config:\n', config)
+    #exit()
     if args.org_v:
         model = Modelv6_v2(**config)
     else:

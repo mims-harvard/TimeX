@@ -89,13 +89,7 @@ def main():
     mse = np.mean((preds - trues) ** 2)
     print(f"MSE: {mse:.3f}, MAE: {mae:.3f}")
 
-    
-
-
-        
-
-
-
+    torch.save(model.state_dict(), "predictor.pt")
 
 if __name__ == "__main__":
     main()

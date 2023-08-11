@@ -1,5 +1,5 @@
 import torch
-import argparse, os
+import argparse, os, time
 
 from txai.utils.predictors.loss import Poly1CrossEntropyLoss, GSATLoss_Extended, ConnectLoss_Extended
 from txai.utils.predictors.loss_smoother_stats import *
@@ -47,6 +47,9 @@ def naming_convention(args):
         name = "bc_nola_split={}.pt"
     elif args.no_con:
         name = "bc_nocon_split={}.pt"
+    elif args.runtime_exp:
+        name = None
+        return name
     else:
         name = 'bc_full_split={}.pt'
     
@@ -58,7 +61,7 @@ def naming_convention(args):
 
 def main(args):
 
-    tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/PAM/models/transformer_split={}.pt"
+    tencoder_path = "/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/experiments/PAM/formal_models/transformer_split={}.pt"
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -82,7 +85,7 @@ def main(args):
 
     targs = transformer_default_args
 
-    for i in range(2, 6):
+    for i in range(1, 6):
         trainPAM, val, test = process_PAM(split_no = i, device = device, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/PAMAP2data/', gethalf = True)
         # Output of above are chunks
         train_dataset = DatasetwInds(trainPAM.X, trainPAM.time, trainPAM.y)
@@ -136,9 +139,15 @@ def main(args):
         optimizer = torch.optim.AdamW(model.parameters(), lr = 2e-3, weight_decay = 0.001)
         
         model_suffix = naming_convention(args)
-        spath = os.path.join('models', model_suffix)
-        spath = spath.format(i)
-        print('saving at', spath)
+        if model_suffix is None:
+            spath = None
+            print('Not saving model')
+        else:
+            spath = os.path.join('models', model_suffix)
+            spath = spath.format(i)
+            print('saving at', spath)
+
+        start_time = time.time()
 
         best_model = train_mv6_consistency(
             model,
@@ -159,12 +168,16 @@ def main(args):
             use_scheduler = False
         )
 
-        sdict, config = torch.load(spath)
+        end_time = time.time()
+        print("Time elapsed split {}: {:.6f}".format(i, end_time - start_time))
 
-        model.load_state_dict(sdict)
+        if spath is not None:
+            sdict, config = torch.load(spath)
 
-        f1, _ = eval_mv4(test, model)
-        print('Test F1: {:.4f}'.format(f1))
+            model.load_state_dict(sdict)
+
+            f1, _ = eval_mv4(test, model)
+            print('Test F1: {:.4f}'.format(f1))
 
 if __name__ == '__main__':
 
@@ -177,6 +190,7 @@ if __name__ == '__main__':
     ablations.add_argument('--simclr', action = 'store_true', help = 'Uses SimCLR loss instead of consistency loss')
     ablations.add_argument('--no_la', action = 'store_true', help = 'No label alignment - just consistency loss')
     ablations.add_argument('--no_con', action = 'store_true', help = 'No consistency loss - just label')
+    ablations.add_argument('--runtime_exp', action = 'store_true', help = 'Run runtime experiment')
     # Note if you don't activate any of them, it just trains the normal method
 
     parser.add_argument('--r', type = float, default = 0.5, help = 'r for GSAT loss')

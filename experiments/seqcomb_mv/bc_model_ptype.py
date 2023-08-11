@@ -17,7 +17,6 @@ from txai.utils.predictors.select_models import *
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
-
 def naming_convention(args):
     if args.eq_ge:
         name = "bc_eqge_split={}.pt"
