@@ -23,6 +23,7 @@ from txai.utils.experimental import get_explainer
 # Plotting tools:
 import matplotlib.pyplot as plt
 from umap import UMAP
+from sklearn.cluster import KMeans
 
 from txai.prototypes.posthoc import find_kmeans_ptypes, find_nearest_explanations, filter_prototypes
 from txai.models.run_model_utils import batch_forwards, batch_forwards_TransformerMVTS
@@ -159,6 +160,12 @@ def main_sim(model, train, test, args):
 
     pred_model = out_train['pred'].softmax(dim=-1).argmax(dim=-1)
 
+    if args.kmeans:
+        # replace prototypes with kmeans centroids
+        kmeans = KMeans(n_clusters=model.n_prototypes)
+        kmeans.fit(ztrain)
+        model.prototypes = torch.nn.Parameter(torch.from_numpy(kmeans.cluster_centers_).float().to(model.prototypes.device))
+
     # Choose random exps:
     if args.get_ptypes:
         to_choose = torch.arange(model.n_prototypes)
@@ -228,8 +235,15 @@ def main_sim(model, train, test, args):
         yn_list.append([yi.item() for yi in yt_sub])
 
     if args.get_ptypes:
-        vis_sim_to_ptypes(X_nearby_list = Xn_list, mask_nearby_list = mn_list,
-            y_nearby_list = yn_list, show = True)
+        fig = vis_sim_to_ptypes(X_nearby_list = Xn_list, mask_nearby_list = mn_list,
+            y_nearby_list = yn_list, show = False)
+        # plt.tight_layout(pad=0.3)
+        if args.kmeans:
+            fig.suptitle("Nearest Train Examples to K-Means Centroids")
+            plt.savefig("saliency_kmeans.png")
+        else:
+            fig.suptitle("Nearest Train Examples to Landmarks")
+            plt.savefig("saliency_prototypes.png")
 
         if args.savepath is not None:
             torch.save((Xn_list, mn_list, yn_list), args.savepath)
@@ -336,6 +350,7 @@ if __name__ == '__main__':
     parser.add_argument('--org_v', action = 'store_true')
     parser.add_argument('--sample_seed', type = int, default = None)
     parser.add_argument('--get_ptypes', action = 'store_true')
+    parser.add_argument('--kmeans', action = 'store_true')
     parser.add_argument('--random', action = 'store_true', help = 'Picks random samples to visualize')
     parser.add_argument('--gettop', action = 'store_true')
     parser.add_argument('--savepath', type = str, default = None)
@@ -374,9 +389,13 @@ if __name__ == '__main__':
         train = (trainD.X, trainD.time, trainD.y)
         test = (test.X, test.time, test.y)
     elif D == 'mitecg_hard':
-        trainD, _, test, _ = process_MITECG(split_no = args.split_no, device = device, hard_split = True, exclude_pac_pvc = True, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Hard/')
+        # trainD, _, test, _ = process_MITECG(split_no = args.split_no, device = device, hard_split = True, exclude_pac_pvc = True, base_path = '/n/data1/hms/dbmi/zitnik/lab/users/owq978/TimeSeriesCBM/datasets/MITECG-Hard/')
+        trainD, _, test, _ = process_MITECG(split_no = args.split_no, device = device, hard_split = True, exclude_pac_pvc = True, base_path = 'datasets/drive/datasets_and_models/MITECG-Hard/')
         train = (trainD.X, trainD.time, trainD.y)
         test = (test.X, test.time, test.y)
+
+    np.random.seed(0)
+    torch.manual_seed(0)
 
     # Loading:
     print('Loading model at {}'.format(args.model_path))
