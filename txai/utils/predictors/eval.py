@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from sklearn.metrics import f1_score, average_precision_score, roc_auc_score
-from txai.models.run_model_utils import batch_forwards_TransformerMVTS
+from txai.models.run_model_utils import batch_forwards_TransformerMVTS, batch_forwards
 from txai.models.encoders.simple import CNN, LSTM
 
 @torch.no_grad()
@@ -79,11 +79,15 @@ def eval_mv3_sim(test_tuple, model):
     return f1, (pred, pred_tilde, mask_in, ste_mask, smoother_stats, smooth_src, zs)
 
 @torch.no_grad()
-def eval_mv4(test_tuple, model, masked = False):
+def eval_mv4(test_tuple, model, masked = False, batch_size=None):
     # Also evaluates models above v4
     model.eval()
     X, times, y = test_tuple
-    out = model(X, times, captum_input = False)
+    
+    if batch_size is not None:
+        out = batch_forwards(model, X, times, batch_size)
+    else:
+        out = model(X, times, captum_input = False)
 
     if masked:
         pred = out['pred_mask']
