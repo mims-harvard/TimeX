@@ -88,7 +88,8 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type=str)
     parser.add_argument('--dataset', type = str)
     parser.add_argument('--embedding', action = 'store_true')
-    parser.add_argument('--kmeans', action = 'store_true')
+    parser.add_argument('--kmeans_proto', action = 'store_true')
+    parser.add_argument('--random_proto', action = 'store_true')
     parser.add_argument('--sim_acc', action = 'store_true')
     parser.add_argument('--class_num', type=int, default = 0)
     parser.add_argument('--split_no', type=int, default = 1)
@@ -151,7 +152,7 @@ if __name__ == '__main__':
     model.eval()
     model.to(device)
 
-    if args.kmeans:
+    if args.kmeans_proto:
         # replace model.prototypes with kmeans centroids
         from sklearn.cluster import KMeans
 
@@ -162,7 +163,9 @@ if __name__ == '__main__':
         kmeans = KMeans(n_clusters=model.n_prototypes)
         kmeans.fit(ztrain)
         model.prototypes = torch.nn.Parameter(torch.from_numpy(kmeans.cluster_centers_).float().to(model.prototypes.device))
-        
+
+    if args.random_proto:
+        model.prototypes = torch.nn.Parameter(torch.randn_like(model.prototypes))
     
     if args.sim_acc:
         # Experiment, evaluate accuracy of logistic regression on similarity vectors between z and prototypes
