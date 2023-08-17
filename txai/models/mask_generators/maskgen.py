@@ -63,7 +63,7 @@ class MaskGenerator(nn.Module):
     def init_weights(self):
         def iweights(m):
             if isinstance(m, nn.Linear):
-                torch.nn.init.xavier_uniform(m.weight)
+                torch.nn.init.xavier_uniform_(m.weight)
                 m.bias.data.fill_(0.01)
 
         self.time_prob_net.apply(iweights)
