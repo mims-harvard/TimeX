@@ -30,7 +30,6 @@ if __name__ == '__main__':
     parser.add_argument('--embedding', action = 'store_true')
     parser.add_argument('--kmeans_proto', action = 'store_true')
     parser.add_argument('--random_proto', action = 'store_true')
-    parser.add_argument('--sim_acc', action = 'store_true')
     parser.add_argument('--class_num', type=int, default = 0)
     parser.add_argument('--split_no', type=int, default = 1)
     parser.add_argument('--discrete', action='store_true', help = 'Shows mask as discrete object')
@@ -113,57 +112,57 @@ if __name__ == '__main__':
             model.prototypes = torch.nn.Parameter(torch.from_numpy(kmeans.cluster_centers_).float().to(model.prototypes.device))
 
         if args.random_proto:
+            # replace prototypes with random 
             model.prototypes = torch.nn.Parameter(torch.randn_like(model.prototypes))
         
-        if args.sim_acc:
-            # Experiment, evaluate accuracy of logistic regression on similarity vectors between z and prototypes
-            from sklearn.linear_model import LogisticRegression    
-            from sklearn.metrics.cluster import normalized_mutual_info_score, adjusted_rand_score, silhouette_score
-            from sklearn.neighbors import KNeighborsClassifier
-            from sklearn.metrics import f1_score
+        # Experiment, evaluate clustering of prototypes
+        from sklearn.linear_model import LogisticRegression    
+        from sklearn.metrics.cluster import normalized_mutual_info_score, adjusted_rand_score, silhouette_score
+        from sklearn.neighbors import KNeighborsClassifier
+        from sklearn.metrics import f1_score
 
-            with torch.no_grad():
+        with torch.no_grad():
 
-                # normalized prototypes
-                proto_norm = F.normalize(model.prototypes, dim = 1)
+            # normalized prototypes
+            proto_norm = F.normalize(model.prototypes, dim = 1)
 
 
-                # inference for z vectors on train
-                X_train, times_train, y_train, _ = train.get_all()
-                out_train = batch_forwards(model, X_train, times_train, batch_size=32, org_v=args.org_v)
-                ztrain = out_train['z_mask_list'].squeeze(-1).to(device)
+            # inference for z vectors on train
+            X_train, times_train, y_train, _ = train.get_all()
+            out_train = batch_forwards(model, X_train, times_train, batch_size=32, org_v=args.org_v)
+            ztrain = out_train['z_mask_list'].squeeze(-1).to(device)
 
-                # cosine similarities between z_mask and prototypes
-                ztrain_norm = F.normalize(ztrain, dim = 1)
-                sim_train = torch.matmul(ztrain_norm, proto_norm.transpose(0, 1))
+            # cosine similarities between z_mask and prototypes
+            ztrain_norm = F.normalize(ztrain, dim = 1)
+            sim_train = torch.matmul(ztrain_norm, proto_norm.transpose(0, 1))
 
-                # find k most similar vectors and use those
-                # best_k_indices = sim_train.sum(0).topk(5).indices
-                
-                # use all k
-                best_k_indices = torch.arange(sim_train.shape[1], device=sim_train.device)
+            # find k most similar vectors and use those
+            # best_k_indices = sim_train.sum(0).topk(5).indices
+            
+            # use all k
+            best_k_indices = torch.arange(sim_train.shape[1], device=sim_train.device)
 
-                knn = KNeighborsClassifier(n_neighbors=1).fit(model.prototypes[best_k_indices, :].cpu().numpy(), np.arange(len(best_k_indices)))
+            knn = KNeighborsClassifier(n_neighbors=1).fit(model.prototypes[best_k_indices, :].cpu().numpy(), np.arange(len(best_k_indices)))
 
-                # train lr on similarity vectors
-                logistic_regression = LogisticRegression(max_iter=10_000).fit(sim_train[:, best_k_indices].cpu().numpy(), y_train.cpu().numpy())
+            # train lr on similarity vectors
+            logistic_regression = LogisticRegression(max_iter=10_000).fit(sim_train[:, best_k_indices].cpu().numpy(), y_train.cpu().numpy())
 
-                # inference for z vectors on test
-                X_test, times_test, y_test = test
-                out_test = batch_forwards(model, X_test, times_test, batch_size=32, org_v=args.org_v)
-                ztest = out_test['z_mask_list'].squeeze(-1).to(device)
+            # inference for z vectors on test
+            X_test, times_test, y_test = test
+            out_test = batch_forwards(model, X_test, times_test, batch_size=32, org_v=args.org_v)
+            ztest = out_test['z_mask_list'].squeeze(-1).to(device)
 
-                # cosine similarities between z_mask and prototypes
-                ztest_norm = F.normalize(ztest, dim = 1)
-                sim_test = torch.matmul(ztest_norm, proto_norm.transpose(0, 1))
+            # cosine similarities between z_mask and prototypes
+            ztest_norm = F.normalize(ztest, dim = 1)
+            sim_test = torch.matmul(ztest_norm, proto_norm.transpose(0, 1))
 
-                # generate predictions
-                y_pred = logistic_regression.predict(sim_test[:, best_k_indices].cpu().numpy())
-                knn_pred = knn.predict(ztest.cpu().numpy())
-                # metrics["f1"].append(f1_score(y_test.cpu().numpy(), y_pred))
-                metrics["nmi"].append(normalized_mutual_info_score(y_test.cpu().numpy(), knn_pred))
-                metrics["ari"].append(adjusted_rand_score(y_test.cpu().numpy(), knn_pred))
-                metrics["silhouette"].append(silhouette_score(ztest.cpu().numpy(), knn_pred))
+            # generate predictions
+            y_pred = logistic_regression.predict(sim_test[:, best_k_indices].cpu().numpy())
+            knn_pred = knn.predict(ztest.cpu().numpy())
+            # metrics["f1"].append(f1_score(y_test.cpu().numpy(), y_pred))
+            metrics["nmi"].append(normalized_mutual_info_score(y_test.cpu().numpy(), knn_pred))
+            metrics["ari"].append(adjusted_rand_score(y_test.cpu().numpy(), knn_pred))
+            metrics["silhouette"].append(silhouette_score(ztest.cpu().numpy(), knn_pred))
 
 
     for name, metric in metrics.items():
