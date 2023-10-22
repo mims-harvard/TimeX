@@ -23,9 +23,9 @@ This should install the references that you need to run scripts in the `experime
 
 **Requirements**: Requirements are found in `requirements.txt`. Please install the necessary requirements via `pip` (recommended) or `conda`.
 
-## Datasets and Model Weights
+## Datasets
 
-Processed datasets and model weights will be released upon acceptance.
+All datasets can be found on the Harvard Dataverse here: https://doi.org/10.7910/DVN/B0DEQJ.
 
 ## Usage
 
