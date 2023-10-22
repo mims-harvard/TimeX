@@ -14,7 +14,7 @@ from txai.utils.data import process_Synth
 from txai.synth_data.simple_spike import SpikeTrainDataset
 
 from txai.models.modelv6_v2 import Modelv6_v2
-from txai.models.bc_model import BCExplainModel
+from txai.models.bc_model import TimeXModel
 
 from txai.utils.functional import transform_to_attn_mask
 from txai.utils.data.preprocess import process_Epilepsy, process_PAM, process_Boiler_OLD
@@ -94,7 +94,7 @@ def main(args):
     else:
         if args.exp_method == 'ours':
             sdict, config = torch.load(args.model_path)
-            model = BCExplainModel(**config)
+            model = TimeXModel(**config)
             model.load_state_dict(sdict)
             model.eval()
             model.to(device)

@@ -6,7 +6,7 @@ from txai.utils.predictors.loss_smoother_stats import *
 from txai.trainers.train_mv6_consistency import train_mv6_consistency
 
 from txai.models.encoders.transformer_simple import TransformerMVTS
-from txai.models.bc_model import BCExplainModel, AblationParameters, transformer_default_args
+from txai.models.bc_model import TimeXModel, AblationParameters, transformer_default_args
 from txai.utils.data import process_Synth
 from txai.utils.predictors.eval import eval_mv4
 from txai.synth_data.simple_spike import SpikeTrainDataset
@@ -130,7 +130,7 @@ def main(args):
             'connect': 2.0
         }
 
-        model = BCExplainModel(
+        model = TimeXModel(
             d_inp = 4,
             max_len = 200,
             n_classes = 4,

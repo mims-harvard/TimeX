@@ -6,7 +6,7 @@ from txai.vis.visualize_mv6 import vis_concepts, visualize_explanations, visuali
 
 # Models:
 from txai.models.modelv6_v2 import Modelv6_v2
-from txai.models.bc_model import BCExplainModel
+from txai.models.bc_model import TimeXModel
 
 from txai.utils.data import process_Synth
 from txai.utils.predictors.eval import eval_mv4
@@ -141,7 +141,7 @@ if __name__ == '__main__':
     if args.org_v:
         model = Modelv6_v2(**config)
     else:
-        model = BCExplainModel(**config)
+        model = TimeXModel(**config)
     model.load_state_dict(sdict)
     model.eval()
     model.to(device)

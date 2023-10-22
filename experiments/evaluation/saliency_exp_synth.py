@@ -17,8 +17,8 @@ from txai.synth_data.simple_spike import SpikeTrainDataset
 from txai.utils.data.preprocess import process_Epilepsy, process_PAM
 
 from txai.models.modelv6_v2 import Modelv6_v2
-from txai.models.bc_model import BCExplainModel
-from txai.models.bc_model_irreg import BCExplainModel_Irregular
+from txai.models.bc_model import TimeXModel
+from txai.models.bc_model_irreg import TimeXModel_Irregular
 
 from txai.utils.evaluation import ground_truth_xai_eval, ground_truth_IoU
 
@@ -271,9 +271,9 @@ def main(args):
         if args.org_v:
             model = Modelv6_v2(**config)
         elif Dname == 'irreg':
-            model = BCExplainModel_Irregular(**config)
+            model = TimeXModel_Irregular(**config)
         else:
-            model = BCExplainModel(**config)
+            model = TimeXModel(**config)
         model.load_state_dict(sdict)
         model.eval()
         model.to(device)

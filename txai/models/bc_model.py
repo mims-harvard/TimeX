@@ -55,7 +55,7 @@ default_loss_weights = {
     'connect': 1.0,
 }
 
-class BCExplainModel(nn.Module):
+class TimeXModel(nn.Module):
     '''
     Model has full options through config
         - Use for ablations - configuration supported through config load
@@ -72,7 +72,7 @@ class BCExplainModel(nn.Module):
             tau = 1.0,
             masktoken_stats = None,
         ):
-        super(BCExplainModel, self).__init__()
+        super(TimeXModel, self).__init__()
 
         self.d_inp = d_inp
         self.max_len = max_len
